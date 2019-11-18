@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<robot name="rock1">
+  <!--<static>true</static> -->
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.246"/> <!-- 0.000082 m³, 3000kg/m³-->
+      <inertia ixx="0.0000549534795" ixy="0.0" ixz="0.0" iyy="0.0000911569694" iyz="0.0" izz="0.000104730823" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="rock0.dae"/>
+      </geometry>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="rock0.dae"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>
