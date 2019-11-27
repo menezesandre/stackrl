@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot name="rock21">
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.17885370011901733"/>
+      <inertia ixx="4.75822852582724e-05" ixy="9.886462681233789e-22" ixz="1.3593886186696454e-21" iyy="5.1307348962393767e-05" iyz="3.460261938431825e-21" izz="7.33786818444078e-05" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="rock21.obj"/>
+      </geometry>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="rock21.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

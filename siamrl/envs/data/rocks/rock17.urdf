@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot name="rock17">
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.8308134734577719"/>
+      <inertia ixx="0.000586732003986213" ixy="-4.767472004061626e-20" ixz="-2.0432022874549825e-20" iyy="0.0005985348845593634" iyz="-1.4529438488568765e-19" izz="0.0009227033574013332" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="rock17.obj"/>
+      </geometry>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="rock17.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>
