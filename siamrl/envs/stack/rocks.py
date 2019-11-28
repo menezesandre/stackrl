@@ -15,7 +15,7 @@ class RockStackEnvFlatAction(BaseStackEnvFlatAction):
               '__init__.modes': ['all', 'convex']}
   def __init__(self, mode='convex', **kwargs):
     self.mode = mode
-    super(RockStackEnv, self).__init__(**kwargs)
+    super(RockStackEnvFlatAction, self).__init__(**kwargs)
     
   def _get_urdf_list(self):
     return getRockFiles(mode=self.mode)
