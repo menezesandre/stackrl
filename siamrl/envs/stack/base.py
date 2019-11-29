@@ -17,7 +17,7 @@ GRAVITY = 9.8
 OBJ_MAX_DEPTH = 2.**(-3)
 OBJ_MAX_SIDE = 2.**(-3)
 MAX_ELEVATION = 1.0
-MAX_EPISODE_STEPS = 1000
+MAX_EPISODE_STEPS = 280
 VELOCITY_THRESHOLD = 0.01
 
 class BaseStackEnv(gym.Env):
@@ -49,7 +49,7 @@ place the new object (converted to the new object pose):
   """
   metadata = {'render.modes': ['human', 'depth_array']}
 
-  def __init__(self, baseSize=[.5, .5], targetHeight=1.0, resolution = 2.**(-9),
+  def __init__(self, baseSize=[.375, .375], targetHeight=.5, resolution = 2.**(-9),
                gui=False, seed = None):
     #assert image dimensions are divisible by MIN_DIV
     self.size = np.round(np.array(baseSize)/(resolution*MIN_DIV))*resolution*MIN_DIV
