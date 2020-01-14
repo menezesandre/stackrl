@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot name="i443">
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.2954641977589331"/>
+      <inertia ixx="0.00010336248262240515" ixy="4.3039861632359134e-21" ixz="-5.110983568842647e-21" iyy="0.00011600129825798626" iyz="2.5823916979415482e-20" izz="0.00011970123471097369" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="i443.obj"/>
+      </geometry>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="i443.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

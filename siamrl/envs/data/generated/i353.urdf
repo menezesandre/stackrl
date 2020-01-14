@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot name="i353">
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.25256528217961355"/>
+      <inertia ixx="6.353216023143508e-05" ixy="2.1961093809541182e-20" ixz="-2.3882689517876034e-20" iyy="0.00010657084453959932" iyz="1.7294361375013683e-20" izz="0.00012169720833738563" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="i353.obj"/>
+      </geometry>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="i353.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot name="i584">
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.8664098277249487"/>
+      <inertia ixx="0.0006088973097489761" ixy="2.850354100109393e-20" ixz="2.521467088558309e-20" iyy="0.0006595601909907776" iyz="-4.3851601540144505e-21" izz="0.0008538387539953201" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="i584.obj"/>
+      </geometry>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="i584.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

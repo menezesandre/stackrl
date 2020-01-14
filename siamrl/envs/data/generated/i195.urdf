@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot name="i195">
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.5989717750040332"/>
+      <inertia ixx="0.00035229337270987766" ixy="5.179606472460047e-20" ixz="2.481894768053772e-20" iyy="0.00037100000258970386" iyz="-1.753512607864078e-20" izz="0.0005785206207893521" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="i195.obj"/>
+      </geometry>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="i195.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot name="i224">
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.36586465502401055"/>
+      <inertia ixx="0.00015062332478504457" ixy="-4.498097880315024e-21" ixz="5.060360115354402e-20" iyy="0.0001571891501614036" iyz="8.65883841960642e-20" izz="0.00024435247535663354" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="i224.obj"/>
+      </geometry>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="i224.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>
