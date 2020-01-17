@@ -9,6 +9,8 @@ from tf_agents.trajectories import policy_step
 import numpy as np
 import cv2 as cv
 
+__all__=['CCoeffPolicy', 'GradCorrPolicy']
+
 class Base(py_policy.Base):
   """
   Base class that implements the common initialization
@@ -26,12 +28,9 @@ class CCoeffPolicy(Base):
   methods = [cv.TM_CCOEFF, cv.TM_CCOEFF_NORMED]
 
   def _action(self, time_step, policy_state):
-    if time_step.is_last():
-      return policy_step.PolicyStep(action=(),state=policy_state)
-
     img = time_step.observation[0]
     tmp = time_step.observation[1]
-    # this is necessary because the CCOEFF takes the "empty" 
+    # this may be necessary because the CCOEFF takes the "empty" 
     # pixels into acount when mean centering
     """
     not_empty_count = np.sum(tmp!=0)
@@ -50,8 +49,6 @@ class GradCorrPolicy(Base):
   methods = [cv.TM_CCORR, cv.TM_CCORR_NORMED]
 
   def _action(self, time_step, policy_state):
-    if time_step.is_last():
-      return policy_step.PolicyStep(action=(),state=policy_state)
     img = time_step.observation[0]
     tmp = -time_step.observation[1]
     depth = cv.CV_32F if img.dtype=='float32' else cv.CV_64F

@@ -39,8 +39,8 @@ class BaseStackEnv(gym.Env):
       Multidiscrete(<overhead image height> - <object image height> + 1,
                     <overhead image width> - <object image width> + 1)
 
-  - reward - To be chosen with reward_mode, drop_penalty and settle_penalty arguments
-  on __init__. Differential [maximum/average/minimum] elevation on the overhead image, 
+  - reward - To be chosen with use_mean, drop_penalty and settle_penalty arguments
+  on __init__. Differential [maximum/average] elevation on the overhead image, 
   penalized by droped objects (fallen off the environment limits) and time taken for the 
   structure to stabilize after a placed object
 
@@ -57,38 +57,45 @@ class BaseStackEnv(gym.Env):
       located at the path returned from _get_data_path(). Should use num_objects as the
       lenght of the returned list
   """
-  metadata = {'render.modes': ['depth_array'],
-              'reward_modes': ['max', 'avg', 'min']}
+  metadata = {'render.modes': ['depth_array']}
 
   def __init__(self,
-              baseSize=[.5, .5],
+              base_size=[0.3125, 0.4375],
               resolution=2.**(-9),
               num_objects=100,
               gui=False,
               flat_action=True,
-              reward_mode='avg',
-              drop_penalty=0.,
+              use_mean=False,
               settle_penalty=lambda x: 0.,
+              drop_penalty=0.,
+              reward_scale=1.,
+              info = False,
               seed = None):
     """
     Args:
-      baseSize: dimensions of the base of the structure, in m.
+      base_size: dimensions of the base of the structure, in m.
       resolution: size of a pixel of the observation images, in m.
       num_objects: number of objects used in an episode
       gui: whether to use the pybullet GUI.
-      flat_action: defines the format of actions (True - flat, False - grid).
-      reward_mode: defines the base of the reward ('max', 'avg' or 'min').
-      drop_penalty: penalty aplied to the reward when an object falls of 
-        the environment.
+      flat_action: defines the format of actions (True - flat, 
+        False - grid).
+      reward_mode: Whether to use mean elevation of the overhead
+        image on reward calculation. If false, use maximum.
       settle_penalty: callable that returns a penalty given the number of
         simulation steps taken for the structure to settle.
+      drop_penalty: penalty aplied to the reward when an object 
+        falls of the environment.
+      reward_scale: scaling factor by which returned reward is
+        multiplied
+      info: Whether to return info from step
       seed: seed for the random generator.
     """
     # Make image dimensions divisible by MIN_DIV
-    self.size = np.round(np.array(baseSize)/(resolution*MIN_DIV))*resolution*MIN_DIV
+    self.size = np.round(np.array(base_size)/(resolution*MIN_DIV))*resolution*MIN_DIV
     self.resolution = resolution    
     self.spawn_z = 2*MAX_ELEVATION
     self.num_objects = num_objects
+    self._info = info
 
     # Connect to the physics server
     self.connection_mode = pb.GUI if gui else pb.DIRECT
@@ -125,18 +132,11 @@ class BaseStackEnv(gym.Env):
         [self.overhead_cam.height - self.object_cam.height + 1, 
         self.overhead_cam.width - self.object_cam.width + 1])
 
-    # Set reward. If given mode is unkown, use the average 
-    if reward_mode in ['max', 'maximum']:
-      self._reward_op = np.max
-    elif reward_mode in ['avg', 'average', 'mean']:
-      self._reward_op = np.mean
-    elif reward_mode in ['min', 'minimum']:
-      self._reward_op = np.min
-    else:
-      print('Unknown reward_mode, using average') 
-      self._reward_op = np.mean
+    # Set reward operations
+    self._reward_op = np.mean if use_mean else np.max
     self._settle_penalty = settle_penalty
     self._drop_penalty = drop_penalty
+    self._reward_scale = reward_scale
 
     # Seed the random generator
     self.seed(seed)
@@ -161,12 +161,20 @@ class BaseStackEnv(gym.Env):
       counter +=1
 
     # Add the penalty for the time taken to settle
-    self._reward_mem += self._settle_penalty(counter)
+    self._penalty += self._settle_penalty(counter)
 
     # Spawn the object to be placed on next step
-    self._new_object()
+    self._new_state()
 
-    return self._observation(), self._reward(), self._done, {'sim_steps': counter}
+    if self._info:
+      info = {'max': np.max(self._overhead_img),
+              'mean': np.mean(self._overhead_img),
+              'steps': counter,
+              'n_obj': len(self._object_ids)}
+    else:
+      info = {}
+
+    return self._observation(), self._reward(), self._done, info
 
   def reset(self):
     # Connect to physics server if disconnected, otherwise reset simulation
@@ -179,8 +187,8 @@ class BaseStackEnv(gym.Env):
       self.sim.resetSimulation()
     # Get new list of urdf models
     self._urdf_list = self._get_urdf_list()
-    # Reset reward memory
-    self._reward_mem = 0.
+    # Reset current accumulated penalty
+    self._penalty = 0.
     # Empty object ids list
     self._object_ids = []
     # Set end of episode flag to false
@@ -190,7 +198,7 @@ class BaseStackEnv(gym.Env):
     # Load the ground plane
     self.sim.loadURDF('plane.urdf')
     # Spawn the first object to be placed
-    self._new_object()
+    self._new_state()
     return self._observation()
 
   def render(self, mode='depth_array'):
@@ -210,37 +218,61 @@ class BaseStackEnv(gym.Env):
     return (self._overhead_img.copy(), self._object_img.copy())
 
   def _reward(self, **kwargs):
-    current = self._reward_op(self._overhead_img)
-    reward = current - self._reward_mem
-    self._reward_mem = current
-    return reward
+    """
+    Computes this step's reward as the difference between state's
+      reward and the acumulated penalty
+    """
+    reward = self._reward_op(self._overhead_img)
+    reward -= self._penalty
+    # Set the penalty of the next step as the current reward
+    # to implement differential reward
+    self._penalty += reward
+    return reward*self._reward_scale
 
-  def _new_object(self):
-    #Pop a file from the urdf list and load it into the simulator
-    #The episode ends when the list is empty
+  def _new_state(self):
+    """
+    Prepare next state of the environment: Spawn new object, store
+      new observations
+    """
+    # Pop a file from the urdf list and load it into the simulator
     if len(self._urdf_list) > 0:
       filename = self._urdf_list.pop()
-      self._object_ids.append(self.sim.loadURDF(filename, basePosition=[0, 0, self.spawn_z]))
+      self._object_ids.append(self.sim.loadURDF(filename, 
+          basePosition=[0, 0, self.spawn_z]))
     else:
+      # The episode ends when the list is empty 
       self._done = True
-    #Take new observations
+
+    # Take new observations
     self._overhead_img = self.overhead_cam()
     self._object_img = self.object_cam(flip='w')
 
-    #This may be unnecessary if MAX_ELEVATION is big enough for the number of objects
-    if np.max(self._overhead_img) >= MAX_ELEVATION:
-      self._done = True
+    # This is unnecessary if MAX_ELEVATION is big enough for the 
+    # number of objects
+#    if np.max(self._overhead_img) >= MAX_ELEVATION:
+#      self._done = True
 
   def _step_done(self):
-    # as the last object is the most likely to be moving, iterating the 
-    # list backwards assures only one object is checked for most steps
+    """
+    Check if this step's simulation is done. The condition is that
+      the velocity of every object is bellow some threshold (meaning
+      that the structure has settled).
+    Objects off the limits get removed.
+
+    Returns:
+      True if all objects' velocities are bellow threshold,
+      False otherwise.
+    """
+    # As the last object is the most likely to be moving, iterating
+    # the list backwards assures only one object is checked for most
+    # steps
     for obj in self._object_ids[::-1]:
       pos, _ = self.sim.getBasePositionAndOrientation(obj)
       # If object fell off the base, remove it and add the penalty 
       if pos[2] < 0:
         self.sim.removeBody(obj)
         self._object_ids.remove(obj)
-        self._reward_mem += self._drop_penalty
+        self._penalty += self._drop_penalty
         continue
       if np.linalg.norm(np.array(self.sim.getBaseVelocity(obj))[0,:]
           ) > VELOCITY_THRESHOLD:
@@ -248,11 +280,16 @@ class BaseStackEnv(gym.Env):
     return True
 
   def _action_to_pose(self, action):
+    """
+    Converts the index(es) from action into a pose on the physical
+      environment
+    """
     if self.flat_action:
       action = [action//self.action_width, action%self.action_width]
-
+    # Convert the pixel indexes to a (x,y) position
     x = (action[0]+self.object_cam.height/2)*self.resolution - self.size[0]/2
     y = (action[1]+self.object_cam.width/2)*self.resolution - self.size[1]/2
+    # Calculate z as the lowest point before colision between object and structure
     elevation = self._overhead_img[action[0]:action[0]+self.object_cam.height, 
       action[1]:action[1]+self.object_cam.width] + self._object_img 
     z = np.max(elevation[self._object_img>10**(-3)]) - OBJ_MAX_DEPTH
