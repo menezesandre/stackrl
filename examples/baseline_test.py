@@ -8,9 +8,9 @@ from tf_agents.drivers import py_driver
 if __name__=='__main__':
   env = suite_gym.load('RockStack-v0')
   policies = [
-#    random_py_policy.RandomPyPolicy(
-#      time_step_spec=env.time_step_spec(),
-#      action_spec=env.action_spec()),
+    random_py_policy.RandomPyPolicy(
+      time_step_spec=env.time_step_spec(),
+      action_spec=env.action_spec()),
     baselines.CCoeffPolicy(
       time_step_spec=env.time_step_spec(),
       action_spec=env.action_spec()),
@@ -29,12 +29,11 @@ if __name__=='__main__':
     print('- Average Return: ', metric.result())
 
 """
-Return:
-
+Return (32 objects, avg of 5):
 RandomPyPolicy
-- Average Return:  -0.053464204
+- Average Return:  -7.459245
 CCoeffPolicy
-- Average Return:  -0.01035863
+- Average Return:  8.345945
 GradCorrPolicy
-- Average Return:  -0.021950833
+- Average Return:  1.0572164
 """

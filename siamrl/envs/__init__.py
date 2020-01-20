@@ -34,7 +34,7 @@ register(
     max_episode_steps = MAX_EPISODE_STEPS,
     kwargs = {'model_name': 'i',
               'num_objects': MAX_EPISODE_STEPS,
-#              'gui': True,
+              'gui': True,
               'info': True}
 )
 
@@ -57,15 +57,17 @@ average step reward should be close to zero for the baselines.
 Positive reward means an improvement over baseline. S is set to
 make the rewards order 1
 """
-USE_MEAN = True
+HEIGHT_REWARD = None
 EXP_SETTLE_FUNC = True
 
 H = 120
 # Scale the penalty and the total reward according to the 
 # reward mode
-if USE_MEAN:
+if HEIGHT_REWARD is None:
+  P = 1.
+elif HEIGHT_REWARD = 'mean':
   P = 0.0025
-else:
+elif HEIGHT_REWARD = 'max':
   P = 0.0056
 S = 1./P
 
@@ -82,7 +84,7 @@ register(
     max_episode_steps = MAX_EPISODE_STEPS,
     kwargs = {'model_name': 'ic',
               'num_objects': MAX_EPISODE_STEPS,
-              'use_mean': USE_MEAN,
+              'height_reward': HEIGHT_REWARD,
               'settle_penalty': SETTLE_FUNC,
               'drop_penalty': P,
               'reward_scale': S}

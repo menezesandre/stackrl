@@ -39,7 +39,7 @@ class BaseStackEnv(gym.Env):
       Multidiscrete(<overhead image height> - <object image height> + 1,
                     <overhead image width> - <object image width> + 1)
 
-  - reward - To be chosen with use_mean, drop_penalty and settle_penalty arguments
+  - reward - To be chosen with height, drop_penalty and settle_penalty arguments
   on __init__. Differential [maximum/average] elevation on the overhead image, 
   penalized by droped objects (fallen off the environment limits) and time taken for the 
   structure to stabilize after a placed object
@@ -65,7 +65,7 @@ class BaseStackEnv(gym.Env):
               num_objects=100,
               gui=False,
               flat_action=True,
-              use_mean=False,
+              height_reward=None,
               settle_penalty=lambda x: 0.,
               drop_penalty=0.,
               reward_scale=1.,
@@ -133,7 +133,14 @@ class BaseStackEnv(gym.Env):
         self.overhead_cam.width - self.object_cam.width + 1])
 
     # Set reward operations
-    self._reward_op = np.mean if use_mean else np.max
+    if height_reward is None:
+      self._reward_op = lambda x: 0.
+    elif height_reward in ['mean', 'avg', 'average']:
+      self._reward_op = np.mean 
+    elif height_reward in ['max', 'maximum']:
+      self._reward_op = np.max
+    else:
+      self._reward_op = lambda x: 0.
     self._settle_penalty = settle_penalty
     self._drop_penalty = drop_penalty
     self._reward_scale = reward_scale
