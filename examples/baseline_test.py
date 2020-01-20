@@ -6,7 +6,7 @@ from tf_agents.metrics import py_metrics, py_metric
 from tf_agents.drivers import py_driver
 
 if __name__=='__main__':
-  env = suite_gym.load('RockStack-v0')
+  env = suite_gym.load('RockStack-v1')
   policies = [
     random_py_policy.RandomPyPolicy(
       time_step_spec=env.time_step_spec(),

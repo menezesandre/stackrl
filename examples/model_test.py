@@ -13,7 +13,7 @@ from tf_agents.metrics import tf_metrics
 from siamrl.networks import SiamQNetwork
 
 if __name__=='__main__':
-  env = tf_py_environment.TFPyEnvironment(suite_gym.load('RockStack-v0'))
+  env = tf_py_environment.TFPyEnvironment(suite_gym.load('RockStack-v1'))
   q_net = SiamQNetwork(env.observation_spec(), 
       env.action_spec())
 
@@ -24,7 +24,7 @@ if __name__=='__main__':
 
   metric = tf_metrics.AverageReturnMetric()
   driver = dynamic_step_driver.DynamicStepDriver(env, policy, 
-    observers=[metric], num_steps=160)
+    observers=[metric], num_steps=64)
 
   initial_time_step = env.reset()
   final_time_step, _ = driver.run(initial_time_step)

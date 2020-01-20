@@ -65,9 +65,9 @@ H = 120
 # reward mode
 if HEIGHT_REWARD is None:
   P = 1.
-elif HEIGHT_REWARD = 'mean':
+elif HEIGHT_REWARD == 'mean':
   P = 0.0025
-elif HEIGHT_REWARD = 'max':
+elif HEIGHT_REWARD == 'max':
   P = 0.0056
 S = 1./P
 
