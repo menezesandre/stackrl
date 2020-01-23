@@ -7,6 +7,8 @@ from pybullet_utils import bullet_client
 
 import numpy as np
 
+import types
+
 import siamrl as s
 from siamrl.envs.utils import ElevationCamera
 from siamrl.envs.data import getGeneratedURDF
@@ -18,6 +20,20 @@ OBJ_MAX_DEPTH = 2.**(-3)
 OBJ_MAX_SIDE = 2.**(-3)
 MAX_ELEVATION = 0.5
 VELOCITY_THRESHOLD = 0.01
+
+def avg_occupied(img):
+  ocupied = np.sum(img != 0)
+  if ocupied != 0:
+    return np.sum(img)/ocupied
+  else:
+    return 0.
+
+def max_occupied(img):
+  ocupied = np.sum(img != 0)
+  if ocupied != 0:
+    return np.max(img)/np.sqrt(ocupied+2000)
+  else:
+    return 0.
 
 class BaseStackEnv(gym.Env):
   """Pybullet implementation of an abstract gym environment whose goal is to stack 
@@ -39,8 +55,8 @@ class BaseStackEnv(gym.Env):
       Multidiscrete(<overhead image height> - <object image height> + 1,
                     <overhead image width> - <object image width> + 1)
 
-  - reward - To be chosen with height, drop_penalty and settle_penalty arguments
-  on __init__. Differential [maximum/average] elevation on the overhead image, 
+  - reward - To be chosen with state_reward, drop_penalty and settle_penalty arguments
+  on __init__. Differential reward computed from the overhead image, 
   penalized by droped objects (fallen off the environment limits) and time taken for the 
   structure to stabilize after a placed object
 
@@ -65,8 +81,9 @@ class BaseStackEnv(gym.Env):
               num_objects=100,
               gui=False,
               flat_action=True,
-              height_reward=None,
-              settle_penalty=lambda x: 0.,
+              state_reward=None,
+              differential_reward=True,
+              settle_penalty=None,
               drop_penalty=0.,
               reward_scale=1.,
               info = False,
@@ -79,10 +96,16 @@ class BaseStackEnv(gym.Env):
       gui: whether to use the pybullet GUI.
       flat_action: defines the format of actions (True - flat, 
         False - grid).
-      reward_mode: Whether to use mean elevation of the overhead
-        image on reward calculation. If false, use maximum.
-      settle_penalty: callable that returns a penalty given the number of
-        simulation steps taken for the structure to settle.
+      state_reward: Either a callable that computes the reward
+        from the overhead observation, or a string if one of the
+        built-in functions is to be used ('avg', 'avg_occ', 'max',
+        'max_occ'). If None or invalid, no state reward is used.
+      differential_reward: Whether the reward is the difference 
+        between current state and last state rewards or absolute
+        current state reward.
+      settle_penalty: callable that returns a penalty given the 
+        number of simulation steps taken for the structure to 
+        settle.
       drop_penalty: penalty aplied to the reward when an object 
         falls of the environment.
       reward_scale: scaling factor by which returned reward is
@@ -133,15 +156,45 @@ class BaseStackEnv(gym.Env):
         self.overhead_cam.width - self.object_cam.width + 1])
 
     # Set reward operations
-    if height_reward is None:
-      self._reward_op = lambda x: 0.
-    elif height_reward in ['mean', 'avg', 'average']:
-      self._reward_op = np.mean 
-    elif height_reward in ['max', 'maximum']:
-      self._reward_op = np.max
+    if isinstance(state_reward, str):
+      if state_reward in ['mean', 'avg']:
+        self._reward_op = np.mean
+      elif state_reward == 'avg_occ':
+        self._reward_op = avg_occupied
+      elif state_reward == 'max':
+        self._reward_op = np.max
+      elif state_reward == 'max_occ':
+        self._reward_op = max_occupied
+      else:
+        self._reward_op = lambda x: 0.
+    elif isinstance(state_reward, types.FunctionType):
+      try:
+        dummy = 0. + state_reward(np.zeros(
+            (self.overhead_cam.height, self.overhead_cam.width)))
+      except:
+        self._reward_op = lambda x: 0.        
+      else:
+        if np.isscalar(dummy):
+          self._reward_op = state_reward
+        else:
+          self._reward_op = lambda x: 0.
     else:
       self._reward_op = lambda x: 0.
-    self._settle_penalty = settle_penalty
+
+    if isinstance(settle_penalty, types.FunctionType):
+      try:
+        dummy = 0. + settle_penalty(0.)
+      except:
+        self._settle_penalty = lambda x: 0.
+      else:
+        if np.isscalar(dummy):
+          self._settle_penalty = settle_penalty
+        else:
+          self._settle_penalty = lambda x: 0.
+    else:
+      self._settle_penalty = lambda x: 0.
+
+    self._differential_reward = differential_reward
     self._drop_penalty = drop_penalty
     self._reward_scale = reward_scale
 
@@ -229,11 +282,16 @@ class BaseStackEnv(gym.Env):
     Computes this step's reward as the difference between state's
       reward and the acumulated penalty
     """
-    reward = self._reward_op(self._overhead_img)
-    reward -= self._penalty
-    # Set the penalty of the next step as the current reward
-    # to implement differential reward
-    self._penalty += reward
+    reward = self._reward_op(self._overhead_img) - self._penalty
+
+    # If using diffetential rewards, set the penalty of the next
+    # step as the current state reward.
+    # Note: this operation is assigning 
+    # penalty + reward_op(state) - penalty = reward_op(state)
+    if self._differential_reward:
+      self._penalty += reward
+    else:
+      self._penalty = 0.
     return reward*self._reward_scale
 
   def _new_state(self):
@@ -357,6 +415,7 @@ class GeneratingStackEnv(BaseStackEnv):
                generator, 
                generator_args,
                **kwargs):
+    raise NotImplementedError
     super(GeneratingStackEnv, self).__init__(**kwargs)
     
   # TODO

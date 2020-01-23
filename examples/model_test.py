@@ -13,11 +13,11 @@ from tf_agents.metrics import tf_metrics
 from siamrl.networks import SiamQNetwork
 
 if __name__=='__main__':
-  env = tf_py_environment.TFPyEnvironment(suite_gym.load('RockStack-v1'))
+  env = tf_py_environment.TFPyEnvironment(suite_gym.load('RockStack-v0'))
   q_net = SiamQNetwork(env.observation_spec(), 
       env.action_spec())
 
-  q_net.net.load_weights('weights/weights14000.h5')
+  q_net.net.load_weights('weights/weights38000d.h5')
 
   policy = greedy_policy.GreedyPolicy(q_policy.QPolicy(
       env.time_step_spec(), env.action_spec(), q_net))

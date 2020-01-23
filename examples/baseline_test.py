@@ -1,3 +1,7 @@
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+
 import siamrl, tf_agents
 from siamrl import baselines #CCoeffPolicy, GradCorrPolicy
 from tf_agents.environments import suite_gym

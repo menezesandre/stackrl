@@ -57,7 +57,7 @@ average step reward should be close to zero for the baselines.
 Positive reward means an improvement over baseline. S is set to
 make the rewards order 1
 """
-HEIGHT_REWARD = None
+HEIGHT_REWARD = lambda x: 1.
 EXP_SETTLE_FUNC = True
 
 H = 120
@@ -69,6 +69,8 @@ elif HEIGHT_REWARD == 'mean':
   P = 0.0025
 elif HEIGHT_REWARD == 'max':
   P = 0.0056
+else:
+  P = 1.
 S = 1./P
 
 if EXP_SETTLE_FUNC:
@@ -84,8 +86,9 @@ register(
     max_episode_steps = MAX_EPISODE_STEPS,
     kwargs = {'model_name': 'ic',
               'num_objects': MAX_EPISODE_STEPS,
-              'height_reward': HEIGHT_REWARD,
-              'settle_penalty': SETTLE_FUNC,
-              'drop_penalty': P,
-              'reward_scale': S}
+              'state_reward': 'max_occ',#HEIGHT_REWARD,
+              'differential_reward': True,
+              'settle_penalty': None,#SETTLE_FUNC,
+              'drop_penalty': 0.,#P,
+              'reward_scale': 10.}#S}
 )
