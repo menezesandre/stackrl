@@ -13,18 +13,19 @@ from tf_agents.metrics import tf_metrics
 from siamrl.networks import SiamQNetwork
 
 if __name__=='__main__':
-  env = tf_py_environment.TFPyEnvironment(suite_gym.load('RockStack-v0'))
+  env = tf_py_environment.TFPyEnvironment(suite_gym.load('CubeStack-v0'))
+  print('batch: ',env.batch_size)
   q_net = SiamQNetwork(env.observation_spec(), 
       env.action_spec())
 
-  q_net.net.load_weights('weights/weights38000d.h5')
+  q_net.net.load_weights('weights/avg_occ.h5')
 
   policy = greedy_policy.GreedyPolicy(q_policy.QPolicy(
       env.time_step_spec(), env.action_spec(), q_net))
 
   metric = tf_metrics.AverageReturnMetric()
   driver = dynamic_step_driver.DynamicStepDriver(env, policy, 
-    observers=[metric], num_steps=64)
+    observers=[metric], num_steps=50)
 
   initial_time_step = env.reset()
   final_time_step, _ = driver.run(initial_time_step)

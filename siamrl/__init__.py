@@ -1,5 +1,6 @@
 from siamrl import envs
 from siamrl import networks
+from siamrl import utils
 # If opencv is not instaled, propagate the exception to the 
 # module's function calls
 try:

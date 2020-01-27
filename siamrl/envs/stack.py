@@ -30,10 +30,7 @@ def avg_occupied(img):
 
 def max_occupied(img):
   ocupied = np.sum(img != 0)
-  if ocupied != 0:
-    return np.max(img)/np.sqrt(ocupied+2000)
-  else:
-    return 0.
+  return np.max(img)/np.sqrt(max(ocupied,6144))
 
 class BaseStackEnv(gym.Env):
   """Pybullet implementation of an abstract gym environment whose goal is to stack 

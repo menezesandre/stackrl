@@ -3,7 +3,7 @@ from siamrl.envs import data
 from siamrl.envs.data import getDataPath
 from siamrl.envs import stack
 
-MAX_EPISODE_STEPS = 32
+MAX_EPISODE_STEPS = 50
 
 """
 Environments for test and visualization
@@ -86,9 +86,9 @@ register(
     max_episode_steps = MAX_EPISODE_STEPS,
     kwargs = {'model_name': 'ic',
               'num_objects': MAX_EPISODE_STEPS,
-              'state_reward': 'max_occ',#HEIGHT_REWARD,
+              'state_reward': 'avg_occ',#HEIGHT_REWARD,
               'differential_reward': True,
               'settle_penalty': None,#SETTLE_FUNC,
               'drop_penalty': 0.,#P,
-              'reward_scale': 10.}#S}
+              'reward_scale': 100.}#S}
 )
