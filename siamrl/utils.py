@@ -149,13 +149,13 @@ def train_ddqn(env_name='RockStack-v1',
   # Create the directory if it doesn't exist
   if not os.path.isdir(directory):
     os.makedirs(directory)
-  checkpoint_dir = os.path.join(directory, 'checkpoint')
+  ckpt_dir = os.path.join(directory, 'checkpoint')
   policy_dir = os.path.join(directory, 'policy')
   eval_file_name = os.path.join(directory, 'eval.log')
 
   # Train the agent
   with open(eval_file_name, 'a') as f:
-    train(agent, train_env, eval_env, checkpoint_dir=checkpoint_dir,
+    train(agent, train_env, eval_env, ckpt_dir=checkpoint_dir,
         policy_dir=policy_dir, plot_dir=directory, eval_file=f,
         **kwargs)
   # Plot the evolution of the policy evaluations
