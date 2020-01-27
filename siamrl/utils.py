@@ -30,7 +30,7 @@ def train(agent,
           train_env,
           eval_env,
           num_iterations = 20000,
-          initial_collect_steps = 1000 ,
+          initial_collect_steps = 1000,
           collect_steps_per_iteration = 1,
           replay_buffer_max_length = 100000,
           batch_size = 64,
@@ -156,7 +156,7 @@ def train_ddqn(env_name='RockStack-v1',
   # Train the agent
   with open(eval_file_name, 'a') as f:
     train(agent, train_env, eval_env, ckpt_dir=ckpt_dir,
-        policy_dir=policy_dir, plot_dir=directory, eval_file=f,
+        policy_dir=policy_dir, eval_file=f,
         **kwargs)
   # Plot the evolution of the policy evaluations
   plot_log(eval_file_name, os.path.join(directory, 'plot.png'), show=True)
