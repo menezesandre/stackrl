@@ -120,6 +120,7 @@ def train(agent,
 
 def train_ddqn(env_name='RockStack-v1',
                net=networks.SiamQNetwork,
+               learning_rate=0.00001,
                target_update_period=10000,
                directory='.',
                **kwargs
@@ -133,6 +134,7 @@ def train_ddqn(env_name='RockStack-v1',
   # Cretate a Q network for the environment specs
   q_net = net(train_env.observation_spec(), 
       train_env.action_spec())
+  optimizer = tf.keras.optimizers.Adam(learning_rate)
   train_step_counter = common.create_variable('train_step_counter')
   # Create a Double DQN agent
   agent = dqn_agent.DdqnAgent(
