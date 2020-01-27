@@ -155,7 +155,7 @@ def train_ddqn(env_name='RockStack-v1',
 
   # Train the agent
   with open(eval_file_name, 'a') as f:
-    train(agent, train_env, eval_env, ckpt_dir=checkpoint_dir,
+    train(agent, train_env, eval_env, ckpt_dir=ckpt_dir,
         policy_dir=policy_dir, plot_dir=directory, eval_file=f,
         **kwargs)
   # Plot the evolution of the policy evaluations
