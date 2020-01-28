@@ -17,31 +17,35 @@ from tf_agents.utils import common
 
 from siamrl import networks
 
-def initial_collect(env, buffer, steps, policy=None):
-  if policy is None:
-    policy = random_tf_policy.RandomTFPolicy(env.time_step_spec(),
-        env.action_spec())
-
-  driver = dynamic_step_driver.DynamicStepDriver(
-      env, policy, observers=[buffer.add_batch], num_steps=steps)
-  driver.run()
+def register():
+  pass
 
 def train(agent,
           train_env,
           eval_env,
           num_iterations = 20000,
-          initial_collect_steps = 1000,
+          initial_collect_steps = 64,
+          initial_collect_policy=None,
           collect_steps_per_iteration = 1,
-          replay_buffer_max_length = 100000,
+          replay_buffer_max_length = 100,
           batch_size = 64,
           log_interval = 200,
           log_file=sys.stdout,
-          num_eval_episodes = 10,
+          num_eval_episodes = 1,
           eval_interval = 1000,
           eval_file=sys.stdout,
           ckpt_dir='./checkpoint',
-          policy_dir='./policy'
+          policy_dir='./policy',
+          verbose=False
           ):
+  def print_log(line):
+    log_file.write(line+'\n')
+  def print_eval(line):
+    eval_file.write(line+'\n')
+  def print_verbose(line):
+    if verbose:
+      print(line)
+
   agent.initialize()
 
   replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
@@ -65,28 +69,47 @@ def train(agent,
 
   if ckpt_dir is not None:
     checkpointer = common.Checkpointer(ckpt_dir=ckpt_dir, 
-        max_to_keep=1, agent=agent, replay_buffer=replay_buffer)
+        max_to_keep=1, agent=agent, policy=agent.policy,
+        replay_buffer=replay_buffer, step=agent.train_step_counter)
   else:
+    print_verbose('Not saving checkpoint.')
     checkpointer = None
 
   if policy_dir is not None:
     saver = policy_saver.PolicySaver(agent.policy)
   else:
+    print_verbose('Not saving evaluated policies.')
     saver = None
 
   if checkpointer is None or not checkpointer.checkpoint_exists:
+    print_verbose('Starting from scratch.')
     # Reset the step counter
     agent.train_step_counter.assign(0)
+
     # Evaluate the agent's policy once before training.
+    print_verbose('Running initial evaluation...')
     eval_driver.run()
-    eval_file.write('Iteration %d\tReward %f\n'%(0, 
+    print_eval('Iteration %d\tReward %f'%(0, 
         avg_return.result().numpy()))
-    # Collect some transitions before start training
-    initial_collect(train_env, replay_buffer, initial_collect_steps)
+    print_verbose('Done.')    
+    # If not provided, use a random policy for the initial collect
+    if initial_collect_policy is None:
+      initial_collect_policy = random_tf_policy.RandomTFPolicy(
+        train_env.time_step_spec(), train_env.action_spec())
+    # Collect transitions
+    initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
+        train_env, initial_collect_policy, 
+        observers=[replay_buffer.add_batch],
+        num_steps=initial_collect_steps)
+    print_verbose('Running initial collect...')
+    initial_collect_driver.run()
+    print_verbose('Done.')
+    del(initial_collect_driver, initial_collect_policy)
+  else:
+    print_verbose('Starting from checkpoint.')
 
   # Optimize by wraping the train method in a graph
   agent.train = common.function(agent.train)
-
   final_time_step, policy_state = collect_driver.run()
   try:
     for _ in range(num_iterations):
@@ -100,25 +123,33 @@ def train(agent,
       step = agent.train_step_counter.numpy()
 
       if step % log_interval == 0:
-        log_file.write('Iteration %d\tLoss %f\n'%(step, loss_info.loss))
+        print_log('Iteration %d\tLoss %f'%(step, loss_info.loss))
 
       if step % eval_interval == 0:
+        print_verbose('Running evaluation...')
         avg_return.reset()
         eval_driver.run()
-        eval_file.write('Iteration %d\tReward %f\n'%(step, 
+        print_verbose('Done.')
+        print_eval('Iteration %d\tReward %f'%(step, 
             avg_return.result().numpy()))
         if saver:
+          print_verbose('Saving evaluated policy.')
           saver.save(os.path.join(policy_dir, str(step)))
         if checkpointer:
+          print_verbose('Saving checkpoint.')
           checkpointer.save(step)
   except:
+    print_verbose('Catched exception:')
     traceback.print_exc()
+  finally:
+    # Save a checkpoint and clean before exiting
+    if checkpointer:
+      print_verbose('Saving checkpoint.')
+      checkpointer.save(agent.train_step_counter)
+    del(saver, checkpointer, eval_driver, avg_return,
+        collect_driver, replay_iter, replay_buffer)
 
-  # Save a checkpoint before exiting
-  if checkpointer:
-    checkpointer.save(step)
-
-def train_ddqn(env_name='RockStack-v1',
+def train_ddqn(env_id='RockStack-v1',
                net=networks.SiamQNetwork,
                learning_rate=0.00001,
                target_update_period=10000,
@@ -127,9 +158,9 @@ def train_ddqn(env_name='RockStack-v1',
                ):
   # Load an environment for training and other for evaluation
   train_env = tf_py_environment.TFPyEnvironment(
-      suite_gym.load(env_name))
+      suite_gym.load(env_id))
   eval_env = tf_py_environment.TFPyEnvironment(
-      suite_gym.load(env_name))
+      suite_gym.load(env_id))
 
   # Cretate a Q network for the environment specs
   q_net = net(train_env.observation_spec(), 
@@ -189,4 +220,3 @@ def plot_log(log_file_name, plot_file_name, show=False):
   fig.savefig(plot_file_name)
   if show:
     fig.show()
-  

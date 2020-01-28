@@ -19,6 +19,18 @@ def validate_input_shape(input_shape):
   assert input_shape[0][1] >= input_shape[1][1]
   assert input_shape[0][2] == input_shape[1][2]
 
+class Correlation(layers.Layer):
+  def __init__(self):
+    super(Correlation, self).__init__()
+
+  @staticmethod
+  def _correlation(inputs):
+    x = tf.nn.conv2d(tf.expand_dims(inputs[0], 0), tf.expand_dims(inputs[1], -1), strides=1, padding='VALID')
+    return tf.squeeze(x, axis=0)
+    
+  def call(self, inputs):
+    return tf.map_fn(self._correlation, inputs, dtype=inputs[0].dtype)
+
 def pseudo_siam_fcn(input_shape, 
                     branch_layers=dirnet.basic_layers, 
                     out_conv=True, 
@@ -56,14 +68,15 @@ def pseudo_siam_fcn(input_shape,
   x = branch_layers(in1, name='left')
   w = branch_layers(in2, name='right')
 
-  def correlation(inputs):
-    x = tf.nn.conv2d(tf.expand_dims(inputs[0], 0), tf.expand_dims(inputs[1], -1), 
-      strides=1, padding='VALID')
-    return tf.squeeze(x, axis=0)
+  # def correlation(inputs):
+  #   x = tf.nn.conv2d(tf.expand_dims(inputs[0], 0), tf.expand_dims(inputs[1], -1), 
+  #     strides=1, padding='VALID')
+  #   return tf.squeeze(x, axis=0)
 
-  out = layers.Lambda(lambda inputs: tf.map_fn(correlation, 
-      inputs, dtype=dtype), name='correlation')((x, w))
+  # out = layers.Lambda(lambda inputs: tf.map_fn(correlation, 
+  #     inputs, dtype=inputs[0].dtype), name='correlation')([x, w])
 
+  out = Correlation()([x,w])
   if out_conv:
     out = layers.Conv2D(1,3, padding='same', name='out_conv')(out)
   if flatten:
