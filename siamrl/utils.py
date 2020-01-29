@@ -15,10 +15,41 @@ from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
-from siamrl import networks
+import gym
 
-def register():
-  pass
+from siamrl import networks
+from siamrl import envs
+
+def register_stack_env(model_name='ic',
+                 num_objects=32,
+                 state_reward='avg_occ',
+                 differential_reward=True,
+                 settle_penalty=None,
+                 drop_penalty=0.,
+                 reward_scale=100.
+):
+  # Assert there are URDFs for the given name
+  assert len(envs.data.getGeneratedURDF(model_name)) > 0
+  ids = [env.id for env in gym.envs.registry.all() if 
+      model_name.upper() in env.id]
+  i = 0
+  while model_name.upper()+'Stack-v%d'%i in ids:
+    i +=1
+  new_id = model_name.upper()+'Stack-v%d'%i
+  gym.register(
+      id =new_id,
+      entry_point='siamrl.envs.stack:GeneratedStackEnv',
+      max_episode_steps = num_objects,
+      kwargs = {'model_name': model_name,
+                'num_objects': num_objects,
+                'state_reward': state_reward,
+                'differential_reward': differential_reward,
+                'settle_penalty': settle_penalty,
+                'drop_penalty': drop_penalty,
+                'reward_scale': reward_scale}
+  )
+  return new_id
+
 
 def train(agent,
           train_env,

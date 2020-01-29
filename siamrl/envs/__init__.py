@@ -6,7 +6,7 @@ from siamrl.envs import stack
 MAX_EPISODE_STEPS = 50
 
 """
-Environments for test and visualization
+Environments for visualization
 ---------------------------------------
 """
 register(
@@ -56,7 +56,7 @@ step increment of the [max/mean] elevation. With this values,
 average step reward should be close to zero for the baselines.
 Positive reward means an improvement over baseline. S is set to
 make the rewards order 1
-"""
+
 HEIGHT_REWARD = lambda x: 1.
 EXP_SETTLE_FUNC = True
 
@@ -92,3 +92,4 @@ register(
               'drop_penalty': 0.,#P,
               'reward_scale': 100.}#S}
 )
+"""
