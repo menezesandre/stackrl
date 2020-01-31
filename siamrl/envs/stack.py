@@ -19,6 +19,7 @@ GRAVITY = 9.8
 OBJ_MAX_DEPTH = 2.**(-3)
 OBJ_MAX_SIDE = 2.**(-3)
 MAX_ELEVATION = 0.5
+ELEVATION_FACTOR = 50 # relates target elevation with number of objects and target area
 VELOCITY_THRESHOLD = 0.01
 
 def avg_occupied(img):
@@ -366,8 +367,7 @@ class BaseStackEnv(gym.Env):
         high=int(self.overhead_cam.width/np.sqrt(2)))
     height = self.np_random.randint(self.object_cam.height, 
         high=int(self.overhead_cam.height/np.sqrt(2)))
-    depth = 50*self.num_objects/(width*height)
-    print(width, height, depth)
+    depth = ELEVATION_FACTOR*self.num_objects/(width*height)
     # Target structure position
     v = self.np_random.randint(self.overhead_cam.width-width)
     u = self.np_random.randint(self.overhead_cam.height-height)
