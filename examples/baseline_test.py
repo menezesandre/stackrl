@@ -10,17 +10,19 @@ from tf_agents.metrics import py_metrics, py_metric
 from tf_agents.drivers import py_driver
 
 if __name__=='__main__':
-  env = suite_gym.load('RockStack-v1')
+  env_id = siamrl.utils.register_stack_env(num_objects=50,goal=True, state_reward='nd')
+  env = suite_gym.load(env_id)
   policies = [
     random_py_policy.RandomPyPolicy(
       time_step_spec=env.time_step_spec(),
       action_spec=env.action_spec()),
-    baselines.CCoeffPolicy(
-      time_step_spec=env.time_step_spec(),
-      action_spec=env.action_spec()),
-    baselines.GradCorrPolicy(
-      time_step_spec=env.time_step_spec(),
-      action_spec=env.action_spec())]
+#    baselines.CCoeffPolicy(
+#      time_step_spec=env.time_step_spec(),
+#      action_spec=env.action_spec()),
+#    baselines.GradCorrPolicy(
+#      time_step_spec=env.time_step_spec(),
+#      action_spec=env.action_spec())
+  ]
 
   for policy in policies:
     metric = py_metrics.AverageReturnMetric()

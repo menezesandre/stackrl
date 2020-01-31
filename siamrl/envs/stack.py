@@ -32,6 +32,20 @@ def max_occupied(img):
   ocupied = np.sum(img != 0)
   return np.max(img)/np.sqrt(max(ocupied,6144))
 
+def occupation_ratio(current, goal):
+  current_occupation = np.where(goal!=0,np.where(current<goal, 
+      current, goal),0.)
+  return np.sum(current_occupation)/np.sum(goal)
+
+def avg_difference(current, goal):
+  diff = np.where(current<goal, current-goal, 0.)
+  return np.sum(diff)/np.sum(goal!=0)
+
+def norm_difference(current, goal):
+  diff = np.where(current<goal, current-goal, 0.)
+  return np.sum(diff)/np.sum(goal)
+
+
 class BaseStackEnv(gym.Env):
   """Pybullet implementation of an abstract gym environment whose goal is to stack 
   the models of a given urdf list on a base rectangle of given size.
@@ -52,10 +66,11 @@ class BaseStackEnv(gym.Env):
       Multidiscrete(<overhead image height> - <object image height> + 1,
                     <overhead image width> - <object image width> + 1)
 
-  - reward - To be chosen with state_reward, drop_penalty and settle_penalty arguments
-  on __init__. Differential reward computed from the overhead image, 
-  penalized by droped objects (fallen off the environment limits) and time taken for the 
-  structure to stabilize after a placed object
+  - reward - To be chosen with goal, state_reward, drop_penalty and settle_penalty 
+  arguments on __init__. Differential reward computed from the overhead image and 
+  current goal (if being used), penalized by droped objects (fallen off the 
+  environment limits) and time taken for the structure to stabilize after a placed
+  object
 
   Subclasses can override the following methods:
     _observation() - to change the observation returned by step() (set 
@@ -73,10 +88,12 @@ class BaseStackEnv(gym.Env):
   metadata = {'render.modes': ['depth_array']}
 
   def __init__(self,
-              base_size=[0.3125, 0.4375],
+              base_size=[0.4375, 0.4375],
               resolution=2.**(-9),
               num_objects=100,
+              gravity=9.8,
               gui=False,
+              goal=False,
               flat_action=True,
               state_reward=None,
               differential_reward=True,
@@ -89,8 +106,11 @@ class BaseStackEnv(gym.Env):
     Args:
       base_size: dimensions of the base of the structure, in m.
       resolution: size of a pixel of the observation images, in m.
-      num_objects: number of objects used in an episode
+      num_objects: number of objects used in an episode.
+      gravity: gravitational acelaration to use on simulation.
       gui: whether to use the pybullet GUI.
+      goal: whether the agent is goal parametrized. If true, the
+        reward is computed according to the goal.
       flat_action: defines the format of actions (True - flat, 
         False - grid).
       state_reward: Either a callable that computes the reward
@@ -115,6 +135,8 @@ class BaseStackEnv(gym.Env):
     self.resolution = resolution    
     self.spawn_z = 2*MAX_ELEVATION
     self.num_objects = num_objects
+    self._gravity = gravity
+    self._use_goal = goal
     self._info = info
 
     # Connect to the physics server
@@ -123,21 +145,36 @@ class BaseStackEnv(gym.Env):
     self.sim.setAdditionalSearchPath(self._get_data_path())
 
     # Set the cameras for observation
-    self.overhead_cam = ElevationCamera(client=self.sim, cameraPos=[0,0,CAMERA_DISTANCE],
-      width=self.size[1], height=self.size[0], depthRange=[-MAX_ELEVATION - 2*OBJ_MAX_DEPTH,
-      0], resolution=resolution)
-    self.object_cam = ElevationCamera(client=self.sim, targetPos=[0, 0, self.spawn_z],
-      cameraPos=[0,0,self.spawn_z-CAMERA_DISTANCE], width=OBJ_MAX_SIDE, height=OBJ_MAX_SIDE, 
-      depthRange=[-OBJ_MAX_DEPTH, OBJ_MAX_DEPTH], resolution=resolution)
+    self.overhead_cam = ElevationCamera(
+        client=self.sim,
+        cameraPos=[0,0,CAMERA_DISTANCE],
+        width=self.size[1], 
+        height=self.size[0], 
+        depthRange=[-MAX_ELEVATION - 2*OBJ_MAX_DEPTH, 0], 
+        resolution=resolution)
+    self.object_cam = ElevationCamera(
+        client=self.sim, 
+        targetPos=[0, 0, self.spawn_z],
+        cameraPos=[0,0,self.spawn_z-CAMERA_DISTANCE], 
+        width=OBJ_MAX_SIDE, 
+        height=OBJ_MAX_SIDE, 
+        depthRange=[-OBJ_MAX_DEPTH, OBJ_MAX_DEPTH], 
+        resolution=resolution)
     self._overhead_img = np.array([])
     self._object_img = np.array([])
+    if self._use_goal:
+      self._goal = np.array([])
 
     # Set observation space
     self.observation_space = spaces.Tuple((
-      spaces.Box(low=0.0, high=MAX_ELEVATION, shape=(self.overhead_cam.height,
-        self.overhead_cam.width, self.overhead_cam.channels), dtype=np.float32),
-      spaces.Box(low=0.0, high=2*OBJ_MAX_DEPTH, shape=(self.object_cam.height, 
-        self.object_cam.width, self.object_cam.channels), dtype=np.float32)
+      spaces.Box(low=0.0, high=MAX_ELEVATION, dtype=np.float32,
+        shape=(self.overhead_cam.height,
+               self.overhead_cam.width, 
+               self.overhead_cam.channels + (1 if self._use_goal else 0))),
+      spaces.Box(low=0.0, high=2*OBJ_MAX_DEPTH, dtype=np.float32, 
+        shape=(self.object_cam.height, 
+               self.object_cam.width, 
+               self.object_cam.channels))
       ))
 
     # Set action space
@@ -153,47 +190,68 @@ class BaseStackEnv(gym.Env):
         self.overhead_cam.width - self.object_cam.width + 1])
 
     # Set reward operations
-    if isinstance(state_reward, str):
-      if state_reward in ['mean', 'avg']:
-        self._reward_op = np.mean
-      elif state_reward == 'avg_occ':
-        self._reward_op = avg_occupied
-      elif state_reward == 'max':
-        self._reward_op = np.max
-      elif state_reward == 'max_occ':
-        self._reward_op = max_occupied
-      else:
-        self._reward_op = lambda x: 0.
-    elif isinstance(state_reward, types.FunctionType):
-      try:
-        dummy = 0. + state_reward(np.zeros(
-            (self.overhead_cam.height, self.overhead_cam.width)))
-      except:
-        self._reward_op = lambda x: 0.        
-      else:
-        if np.isscalar(dummy):
-          self._reward_op = state_reward
+    if self._use_goal:
+      if isinstance(state_reward, str):
+        if state_reward == 'or':
+          self._reward_op = occupation_ratio
+        elif state_reward == 'ad':
+          self._reward_op = avg_difference
+        elif state_reward == 'nd':
+          self._reward_op = norm_difference
+      elif isinstance(state_reward, types.FunctionType):
+        try:
+          # Try function
+          dummy = 0. + state_reward(
+              np.zeros((self.overhead_cam.height, self.overhead_cam.width)),
+              np.ones((self.overhead_cam.height, self.overhead_cam.width)))
+        except:
+          pass        
         else:
-          self._reward_op = lambda x: 0.
+          if np.isscalar(dummy):
+            self._reward_op = state_reward
     else:
+      if isinstance(state_reward, str):
+        if state_reward in ['mean', 'avg']:
+          self._reward_op = np.mean
+        elif state_reward == 'avg_occ':
+          self._reward_op = avg_occupied
+        elif state_reward == 'max':
+          self._reward_op = np.max
+        elif state_reward == 'max_occ':
+          self._reward_op = max_occupied
+      elif isinstance(state_reward, types.FunctionType):
+        try:
+          dummy = 0. + state_reward(np.zeros(
+              (self.overhead_cam.height, self.overhead_cam.width)))
+        except:
+          pass
+        else:
+          if np.isscalar(dummy):
+            self._reward_op = state_reward
+    if not hasattr(self, '_reward_op'):
       self._reward_op = lambda x: 0.
 
     if isinstance(settle_penalty, types.FunctionType):
       try:
         dummy = 0. + settle_penalty(0.)
       except:
-        self._settle_penalty = lambda x: 0.
+        pass
       else:
         if np.isscalar(dummy):
           self._settle_penalty = settle_penalty
-        else:
-          self._settle_penalty = lambda x: 0.
-    else:
+    if not hasattr(self, '_settle_penalty'):
       self._settle_penalty = lambda x: 0.
 
     self._differential_reward = differential_reward
     self._drop_penalty = drop_penalty
     self._reward_scale = reward_scale
+
+    # If there is drop penalty, scale the ground plane according
+    # to size, otherwise make it big enough for nothing to fall
+    if self._drop_penalty != 0:
+      self._plane_scale = np.max(self.size)+2*OBJ_MAX_SIDE
+    else:
+      self._plane_scale = 20.
 
     # Seed the random generator
     self.seed(seed)
@@ -244,6 +302,8 @@ class BaseStackEnv(gym.Env):
       self.sim.resetSimulation()
     # Get new list of urdf models
     self._urdf_list = self._get_urdf_list()
+    # Set new goal
+    self._goal = self._new_goal()
     # Reset current accumulated penalty
     self._penalty = 0.
     # Empty object ids list
@@ -251,9 +311,9 @@ class BaseStackEnv(gym.Env):
     # Set end of episode flag to false
     self._done = False
     # Set gravity
-    self.sim.setGravity(0, 0, -GRAVITY)
+    self.sim.setGravity(0, 0, -self._gravity)
     # Load the ground plane
-    self.sim.loadURDF('plane.urdf')
+    self.sim.loadURDF('plane.urdf', globalScaling=self._plane_scale)
     # Spawn the first object to be placed
     self._new_state()
     return self._observation()
@@ -272,14 +332,22 @@ class BaseStackEnv(gym.Env):
     return [seed]
 
   def _observation(self):
-    return (self._overhead_img.copy(), self._object_img.copy())
+    if self._use_goal:
+      obs = (np.concatenate([self._overhead_img.copy(), 
+          self._goal.copy()], axis=-1), self._object_img.copy())
+    else:
+      obs = (self._overhead_img.copy(), self._object_img.copy())
+    return obs
 
   def _reward(self, **kwargs):
     """
     Computes this step's reward as the difference between state's
       reward and the acumulated penalty
     """
-    reward = self._reward_op(self._overhead_img) - self._penalty
+    if self._use_goal:
+      reward = self._reward_op(self._overhead_img, self._goal) - self._penalty
+    else:
+      reward = self._reward_op(self._overhead_img) - self._penalty
 
     # If using diffetential rewards, set the penalty of the next
     # step as the current state reward.
@@ -290,6 +358,24 @@ class BaseStackEnv(gym.Env):
     else:
       self._penalty = 0.
     return reward*self._reward_scale
+
+  def _new_goal(self):
+    # Target structure dimensions. Area is atmost half of the total
+    # observation area
+    width = self.np_random.randint(self.object_cam.width, 
+        high=int(self.overhead_cam.width/np.sqrt(2)))
+    height = self.np_random.randint(self.object_cam.height, 
+        high=int(self.overhead_cam.height/np.sqrt(2)))
+    depth = 50*self.num_objects/(width*height)
+    print(width, height, depth)
+    # Target structure position
+    v = self.np_random.randint(self.overhead_cam.width-width)
+    u = self.np_random.randint(self.overhead_cam.height-height)
+
+    goal = np.zeros((self.overhead_cam.height, 
+        self.overhead_cam.width, 1))
+    goal[u:u+height, v:v+width, 0] = depth
+    return goal
 
   def _new_state(self):
     """
@@ -313,6 +399,8 @@ class BaseStackEnv(gym.Env):
     # number of objects
 #    if np.max(self._overhead_img) >= MAX_ELEVATION:
 #      self._done = True
+    if np.all(self._overhead_img>self._goal):
+      self._done = True
 
   def _step_done(self):
     """

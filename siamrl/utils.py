@@ -22,6 +22,8 @@ from siamrl import envs
 
 def register_stack_env(model_name='ic',
                  num_objects=32,
+                 gravity=9.8,
+                 goal=False,
                  state_reward='avg_occ',
                  differential_reward=True,
                  settle_penalty=None,
@@ -42,6 +44,8 @@ def register_stack_env(model_name='ic',
       max_episode_steps = num_objects,
       kwargs = {'model_name': model_name,
                 'num_objects': num_objects,
+                'gravity': gravity,
+                'goal': goal,
                 'state_reward': state_reward,
                 'differential_reward': differential_reward,
                 'settle_penalty': settle_penalty,
@@ -160,15 +164,16 @@ def train(agent,
         print_verbose('Running evaluation...')
         avg_return.reset()
         eval_driver.run()
-        print_verbose('Done.')
         print_eval('Iteration %d\tReward %f'%(step, 
             avg_return.result().numpy()))
         if saver:
-          print_verbose('Saving evaluated policy.')
+          print_verbose('Saving evaluated policy...')
           saver.save(os.path.join(policy_dir, str(step)))
         if checkpointer:
-          print_verbose('Saving checkpoint.')
+          print_verbose('Saving checkpoint...')
           checkpointer.save(step)
+        print_verbose('Done.')
+
   except:
     print_verbose('Catched exception:')
     traceback.print_exc()

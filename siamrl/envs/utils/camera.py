@@ -8,13 +8,12 @@ class Camera(object):
     self.bc = client
     self.width = int(width/resolution)
     self.height = int(height/resolution)
-    self.range = depthRange[1] - depthRange[0]
-
     d = np.linalg.norm(np.array(targetPos)-np.array(cameraPos))
-    d = [d+depthRange[0], d+depthRange[1]]
+    self.n = d+depthRange[0]
+    self.f = d+depthRange[1]
     self.viewMatrix = p.computeViewMatrix(cameraPos,targetPos,upVector)
-    self.projectionMatrix = p.computeProjectionMatrix(-width*d[0]/(2*d[1]), 
-      width*d[0]/(2*d[1]), -height*d[0]/(2*d[1]), height*d[0]/(2*d[1]), d[0], d[1])
+    self.projectionMatrix = p.computeProjectionMatrix(-width*self.n/(2*self.f), 
+      width*self.n/(2*self.f), -height*self.n/(2*self.f), height*self.n/(2*self.f), self.n, self.f)
 
   def getImage(self):
     return self.bc.getCameraImage(self.width, self.height, viewMatrix = self.viewMatrix, 
@@ -30,7 +29,7 @@ class ElevationCamera(Camera):
 
   def __call__(self, flip = None):
     _,_,_,d,_ = self.getImage()
-    d = (1.-d)*self.range
+    d = self.f - self.f*self.n/(self.f - (self.f-self.n)*d)
     if flip is not None:
       if flip == 'w' or flip == 'width':
         d = d[:,::-1]

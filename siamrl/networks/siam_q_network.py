@@ -17,7 +17,7 @@ def validate_input_shape(input_shape):
   assert len(input_shape[1]) == 3
   assert input_shape[0][0] >= input_shape[1][0]
   assert input_shape[0][1] >= input_shape[1][1]
-  assert input_shape[0][2] == input_shape[1][2]
+#  assert input_shape[0][2] == input_shape[1][2]
 
 class Correlation(layers.Layer):
   def __init__(self):
