@@ -50,6 +50,7 @@ def register_stack_env(model_name='ic',
       max_episode_steps = num_objects,
       kwargs = {'model_name': model_name,
                 'base_size': base_size,
+                'resolution': resolution,
                 'num_objects': num_objects,
                 'gravity': gravity,
                 'goal': goal,
@@ -210,6 +211,7 @@ def train_ddqn(env_id,
                target_update_period=10000,
                directory='.',
                num_eval_episodes=1,
+               save_policies=False,
                **kwargs
                ):
   # Load an environment for training and other for evaluation
@@ -246,7 +248,10 @@ def train_ddqn(env_id,
   if not os.path.isdir(directory):
     os.makedirs(directory)
   ckpt_dir = os.path.join(directory, 'checkpoint')
-  policy_dir = os.path.join(directory, 'policy')
+  if save_policies:
+    policy_dir = os.path.join(directory, 'policy')  
+  else:
+    policy_dir = None
   eval_file_name = os.path.join(directory, 'eval.log')
 
   # Train the agent
