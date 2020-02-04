@@ -91,6 +91,7 @@ class BaseStackEnv(gym.Env):
   def __init__(self,
               base_size=[0.4375, 0.4375],
               resolution=2.**(-9),
+              time_step=1./240,
               num_objects=100,
               gravity=9.8,
               gui=False,
@@ -135,6 +136,7 @@ class BaseStackEnv(gym.Env):
     # Make image dimensions divisible by MIN_DIV
     self.size = np.round(np.array(base_size)/(resolution*MIN_DIV))*resolution*MIN_DIV
     self.resolution = resolution    
+    self._time_step = time_step
     self.spawn_z = 2*MAX_ELEVATION
     self.num_objects = num_objects
     self._gravity = gravity
@@ -325,6 +327,8 @@ class BaseStackEnv(gym.Env):
     self._object_ids = []
     # Set end of episode flag to false
     self._done = False
+    # Set time step
+    self.sim.setTimeStep(self._time_step)
     # Set gravity
     self.sim.setGravity(0, 0, -self._gravity)
     # Load the ground plane
