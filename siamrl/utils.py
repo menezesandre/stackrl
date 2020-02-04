@@ -231,7 +231,6 @@ def train_ddqn(env_id,
   # Create a Q network for the environment specs
   q_net = net(train_env.observation_spec(), 
       train_env.action_spec())
-  q_net.summary()
   optimizer = tf.keras.optimizers.Adam(learning_rate)
   train_step_counter = common.create_variable('train_step_counter')
   # Create a Double DQN agent
