@@ -1,4 +1,5 @@
-import sys, os, traceback
+import sys, os, traceback, math
+from datetime import datetime
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
@@ -8,6 +9,7 @@ from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.drivers import dynamic_episode_driver
 from tf_agents.environments import suite_gym
+from tf_agents.environments import parallel_py_environment
 from tf_agents.environments import tf_py_environment
 from tf_agents.metrics import tf_metrics
 from tf_agents.policies import policy_saver
@@ -24,7 +26,8 @@ def register_stack_env(model_name='ic',
                  num_objects=32,
                  gravity=9.8,
                  goal=False,
-                 state_reward='avg_occ',
+                 gui=False,
+                 state_reward=None,
                  differential_reward=True,
                  settle_penalty=None,
                  drop_penalty=0.,
@@ -46,6 +49,7 @@ def register_stack_env(model_name='ic',
                 'num_objects': num_objects,
                 'gravity': gravity,
                 'goal': goal,
+                'gui': gui,
                 'state_reward': state_reward,
                 'differential_reward': differential_reward,
                 'settle_penalty': settle_penalty,
@@ -185,20 +189,30 @@ def train(agent,
     del(saver, checkpointer, eval_driver, avg_return,
         collect_driver, replay_iter, replay_buffer)
 
-def train_ddqn(env_id='RockStack-v1',
+def train_ddqn(env_id,
+               num_parallel_envs=1,
                net=networks.SiamQNetwork,
                learning_rate=0.00001,
                target_update_period=10000,
                directory='.',
+               num_eval_episodes=1,
                **kwargs
                ):
   # Load an environment for training and other for evaluation
-  train_env = tf_py_environment.TFPyEnvironment(
-      suite_gym.load(env_id))
-  eval_env = tf_py_environment.TFPyEnvironment(
-      suite_gym.load(env_id))
+  if num_parallel_envs > 1:
+    constructors = [lambda: suite_gym.load(env_id)]*num_parallel_envs
+    train_env = tf_py_environment.TFPyEnvironment(
+        parallel_py_environment.ParallelPyEnvironment(constructors))
+    eval_env = tf_py_environment.TFPyEnvironment(
+        parallel_py_environment.ParallelPyEnvironment(constructors))
+    num_eval_episodes = math.ceil(num_eval_episodes/num_parallel_envs)
+  else:
+    train_env = tf_py_environment.TFPyEnvironment(
+        suite_gym.load(env_id))
+    eval_env = tf_py_environment.TFPyEnvironment(
+        suite_gym.load(env_id))
 
-  # Cretate a Q network for the environment specs
+  # Create a Q network for the environment specs
   q_net = net(train_env.observation_spec(), 
       train_env.action_spec())
   optimizer = tf.keras.optimizers.Adam(learning_rate)

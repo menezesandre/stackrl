@@ -13,7 +13,8 @@ from tf_agents.metrics import tf_metrics
 from siamrl.networks import SiamQNetwork
 
 if __name__=='__main__':
-  env = tf_py_environment.TFPyEnvironment(suite_gym.load('RockStack-v0'))
+  env_id = siamrl.utils.register_stack_env(goal=True,gui=True)
+  env = tf_py_environment.TFPyEnvironment(suite_gym.load(env_id))
   print('batch: ',env.batch_size)
   q_net = SiamQNetwork(env.observation_spec(), 
       env.action_spec())

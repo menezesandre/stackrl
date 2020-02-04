@@ -19,7 +19,7 @@ GRAVITY = 9.8
 OBJ_MAX_DEPTH = 2.**(-3)
 OBJ_MAX_SIDE = 2.**(-3)
 MAX_ELEVATION = 0.5
-ELEVATION_FACTOR = 50 # relates target elevation with number of objects and target area
+ELEVATION_FACTOR = 2e-4 # relates target elevation with number of objects and target area
 VELOCITY_THRESHOLD = 0.01
 
 def avg_occupied(img):
@@ -101,8 +101,9 @@ class BaseStackEnv(gym.Env):
               settle_penalty=None,
               drop_penalty=0.,
               reward_scale=1.,
-              info = False,
-              seed = None):
+              info=False,
+              seed=None,
+              dtype='float32'):
     """
     Args:
       base_size: dimensions of the base of the structure, in m.
@@ -140,6 +141,19 @@ class BaseStackEnv(gym.Env):
     self._use_goal = goal
     self._info = info
 
+    # Define the data type
+    if isinstance(dtype, str):
+      if dtype == 'float16':
+        self.dtype = np.float16
+      elif dtype == 'float32':
+        self.dtype = np.float32
+      elif dtype == 'float64':
+        self.dtype == np.float64
+    elif isinstance(dtype, type):
+      self.dtype = dtype
+    if not hasattr(self, 'dtype'):
+      self.dtype = np.float32
+
     # Connect to the physics server
     self.connection_mode = pb.GUI if gui else pb.DIRECT
     self.sim = BulletClient(connection_mode=self.connection_mode)
@@ -152,7 +166,7 @@ class BaseStackEnv(gym.Env):
         width=self.size[1], 
         height=self.size[0], 
         depthRange=[-MAX_ELEVATION - 2*OBJ_MAX_DEPTH, 0], 
-        resolution=resolution)
+        resolution=self.resolution)
     self.object_cam = ElevationCamera(
         client=self.sim, 
         targetPos=[0, 0, self.spawn_z],
@@ -160,19 +174,19 @@ class BaseStackEnv(gym.Env):
         width=OBJ_MAX_SIDE, 
         height=OBJ_MAX_SIDE, 
         depthRange=[-OBJ_MAX_DEPTH, OBJ_MAX_DEPTH], 
-        resolution=resolution)
-    self._overhead_img = np.array([])
-    self._object_img = np.array([])
+        resolution=self.resolution)
+    self._overhead_img = np.array([], dtype=self.dtype)
+    self._object_img = np.array([], dtype=self.dtype)
     if self._use_goal:
-      self._goal = np.array([])
+      self._goal = np.array([], dtype=self.dtype)
 
     # Set observation space
     self.observation_space = spaces.Tuple((
-      spaces.Box(low=0.0, high=MAX_ELEVATION, dtype=np.float32,
+      spaces.Box(low=0.0, high=MAX_ELEVATION, dtype=self.dtype,
         shape=(self.overhead_cam.height,
                self.overhead_cam.width, 
                self.overhead_cam.channels + (1 if self._use_goal else 0))),
-      spaces.Box(low=0.0, high=2*OBJ_MAX_DEPTH, dtype=np.float32, 
+      spaces.Box(low=0.0, high=2*OBJ_MAX_DEPTH, dtype=self.dtype, 
         shape=(self.object_cam.height, 
                self.object_cam.width, 
                self.object_cam.channels))
@@ -321,7 +335,7 @@ class BaseStackEnv(gym.Env):
 
   def render(self, mode='depth_array'):
     if mode == 'depth_array':
-      return self._observation()
+      return (self._overhead_img.copy(), self._object_img.copy())
     else:
       return super(BaseStackEnv, self).render(mode = mode)
 
@@ -334,11 +348,13 @@ class BaseStackEnv(gym.Env):
 
   def _observation(self):
     if self._use_goal:
-      obs = (np.concatenate([self._overhead_img.copy(), 
-          self._goal.copy()], axis=-1), self._object_img.copy())
+      obs1 = self.dtype(np.concatenate([self._overhead_img.copy(), 
+          self._goal.copy()], axis=-1))
+      obs2 = self.dtype(self._object_img.copy())
     else:
-      obs = (self._overhead_img.copy(), self._object_img.copy())
-    return obs
+      obs1 = self.dtype(self._overhead_img.copy())
+      obs2 = self.dtype(self._object_img.copy())
+    return (obs1, obs2)
 
   def _reward(self, **kwargs):
     """
@@ -367,7 +383,7 @@ class BaseStackEnv(gym.Env):
         high=int(self.overhead_cam.width/np.sqrt(2)))
     height = self.np_random.randint(self.object_cam.height, 
         high=int(self.overhead_cam.height/np.sqrt(2)))
-    depth = ELEVATION_FACTOR*self.num_objects/(width*height)
+    depth = ELEVATION_FACTOR*self.num_objects/(width*height*self.resolution**2)
     # Target structure position
     v = self.np_random.randint(self.overhead_cam.width-width)
     u = self.np_random.randint(self.overhead_cam.height-height)
