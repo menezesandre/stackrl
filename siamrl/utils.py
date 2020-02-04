@@ -23,7 +23,9 @@ from siamrl import networks
 from siamrl import envs
 
 def register_stack_env(model_name='ic',
-                 num_objects=32,
+                 base_size=[0.5, 0.5],
+                 resolution=2**(-9),
+                 num_objects=50,
                  gravity=9.8,
                  goal=False,
                  gui=False,
@@ -31,7 +33,8 @@ def register_stack_env(model_name='ic',
                  differential_reward=True,
                  settle_penalty=None,
                  drop_penalty=0.,
-                 reward_scale=100.
+                 reward_scale=100.,
+                 dtype='float16'
 ):
   # Assert there are URDFs for the given name
   assert len(envs.data.getGeneratedURDF(model_name)) > 0
@@ -46,6 +49,7 @@ def register_stack_env(model_name='ic',
       entry_point='siamrl.envs.stack:GeneratedStackEnv',
       max_episode_steps = num_objects,
       kwargs = {'model_name': model_name,
+                'base_size': base_size,
                 'num_objects': num_objects,
                 'gravity': gravity,
                 'goal': goal,
@@ -54,7 +58,8 @@ def register_stack_env(model_name='ic',
                 'differential_reward': differential_reward,
                 'settle_penalty': settle_penalty,
                 'drop_penalty': drop_penalty,
-                'reward_scale': reward_scale}
+                'reward_scale': reward_scale,
+                'dtype': dtype}
   )
   return new_id
 
@@ -70,6 +75,7 @@ def train(agent,
           batch_size = 64,
           log_interval = 200,
           log_file=sys.stdout,
+          use_time_stamp=True,
           num_eval_episodes = 1,
           eval_interval = 1000,
           eval_file=sys.stdout,
@@ -77,13 +83,21 @@ def train(agent,
           policy_dir='./policy',
           verbose=False
           ):
-  def print_log(line):
-    log_file.write(line+'\n')
+  if use_time_stamp:
+    def print_log(line):
+      stamp = str(datetime.now())
+      log_file.write(stampline+'\n')
+  else:
+    def print_log(line):
+      log_file.write(line+'\n')
   def print_eval(line):
     eval_file.write(line+'\n')
-  def print_verbose(line):
-    if verbose:
+  if verbose:
+    def print_verbose(line):
       print(line)
+  else:
+    def print_verbose(line):
+      pass        
 
   agent.initialize()
 
@@ -215,6 +229,7 @@ def train_ddqn(env_id,
   # Create a Q network for the environment specs
   q_net = net(train_env.observation_spec(), 
       train_env.action_spec())
+  q_net.summary()
   optimizer = tf.keras.optimizers.Adam(learning_rate)
   train_step_counter = common.create_variable('train_step_counter')
   # Create a Double DQN agent

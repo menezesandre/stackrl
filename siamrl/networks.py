@@ -7,6 +7,7 @@ import tensorflow as tf
 from tensorflow.keras import layers #import Lambda, Conv2D, Flatten
 import tf_agents
 from tf_agents.networks import network
+from tf_agents.specs import tensor_spec
 
 import siamrl
 
@@ -28,6 +29,7 @@ class Correlation(layers.Layer):
     
   def call(self, inputs):
     return tf.map_fn(self._correlation, inputs, dtype=inputs[0].dtype)
+
 
 class SiamQNetwork(network.Network):
   """
@@ -81,9 +83,14 @@ class SiamQNetwork(network.Network):
     self.correlation = Correlation()
 
     self.pos = []
-    self.pos.append(layers.Conv2D(8,3,activation='relu', padding='same'))
+    self.pos.append(layers.Conv2D(8,3, activation='relu', padding='same'))
     self.pos.append(layers.Conv2D(1,1))
-    
+    self.pos.append(layers.Flatten())
+
+
+    self.__call__(tensor_spec.sample_spec_nest(
+        self.input_tensor_spec, outer_dims=(1,)))
+
 
   def call(self, observation, step_type=None, network_state=(),
       training=False):
@@ -98,5 +105,17 @@ class SiamQNetwork(network.Network):
       value = layer(value)
 
     return value, network_state
+
+  def create_variables(self, **kwargs):
+    if not self.built:
+      random_input = tensor_spec.sample_spec_nest(
+          self.input_tensor_spec, outer_dims=(0,))
+      random_state = tensor_spec.sample_spec_nest(
+          self.state_spec, outer_dims=(0,))
+      step_type = tf.zeros([time_step.StepType.FIRST], dtype=tf.int32)
+      self.__call__(
+          random_input, step_type=step_type, network_state=random_state,
+          **kwargs)
+
     
 
