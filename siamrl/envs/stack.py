@@ -99,6 +99,7 @@ class BaseStackEnv(gym.Env):
               flat_action=True,
               state_reward=None,
               differential_reward=True,
+              position_reward=False,
               settle_penalty=None,
               drop_penalty=0.,
               reward_scale=1.,
@@ -123,6 +124,8 @@ class BaseStackEnv(gym.Env):
       differential_reward: Whether the reward is the difference 
         between current state and last state rewards or absolute
         current state reward.
+      position_reward: whether to use the objects position (in or
+        outside the target) on the computation of the goal.
       settle_penalty: callable that returns a penalty given the 
         number of simulation steps taken for the structure to 
         settle.
@@ -141,6 +144,7 @@ class BaseStackEnv(gym.Env):
     self.num_objects = num_objects
     self._gravity = gravity
     self._use_goal = goal
+    self._position_reward = position_reward and goal
     self._info = info
 
     # Define the data type
@@ -370,6 +374,10 @@ class BaseStackEnv(gym.Env):
     else:
       reward = self._reward_op(self._overhead_img) - self._penalty
 
+    if self._position_reward:
+      for obj in self._object_ids:
+        reward += 1 if self._inside_goal(obj) else -1
+
     # If using diffetential rewards, set the penalty of the next
     # step as the current state reward.
     # Note: this operation is assigning 
@@ -379,6 +387,11 @@ class BaseStackEnv(gym.Env):
     else:
       self._penalty = 0.
     return reward*self._reward_scale
+
+  def _inside_goal(self, object_id):
+    pos, _ = self.sim.getBasePositionAndOrientation(object_id)
+    pix = self._position_to_pixel(pos)
+    return self._goal[pix[0],pix[1]]
 
   def _new_goal(self):
     # Target structure dimensions. Area is atmost half of the total
@@ -464,6 +477,11 @@ class BaseStackEnv(gym.Env):
       action[1]:action[1]+self.object_cam.width] + self._object_img 
     z = np.max(elevation[self._object_img>10**(-3)]) - OBJ_MAX_DEPTH
     return [x, y, z], [0,0,0,1]
+
+  def _position_to_pixel(self, pos):
+    u = (pos[0]+self.size[0]/2)/self.resolution
+    v = (pos[1]+self.size[1]/2)/self.resolution
+    return [u, v]
 
   def _get_data_path(self):
     return s.envs.getDataPath()
