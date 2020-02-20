@@ -12,6 +12,7 @@ import siamrl as s
 
 def fromBox(n=5,
             mode_extents=(0.1,0.075,0.05),
+            deformation=True,
             density=(2200,2600),
             directory='',
             name='object',
@@ -26,6 +27,8 @@ def fromBox(n=5,
     mode_extents: modes of (each dimention of) the triangular
       distribution from which the extents of the box are randomly
       taken.
+    deformation: whether to apply random displacements to the 
+      vertices
     density: used for the model mass and inertia. Either a scalar
       or a tuple with the limits of a uniform random distribution
     directory: path to the location where to save the models.
@@ -47,13 +50,14 @@ def fromBox(n=5,
     extents = random.triangular(0.6*mode_extents, mode_extents, 1.2*mode_extents, 3)
     # Create a box mesh with these extents
     mesh = box(extents)
-    # Random vertex displacement
-    displ = random.triangular(-0.15*extents, [0,0,0], 0.15*extents, (mesh.vertices.shape[0],3))
-    mesh.vertices += displ
-    # Center the mesh
-    mesh.apply_translation(-mesh.center_mass)
+    if deformation:
+      # Random vertex displacement
+      displ = random.triangular(-0.15*extents, [0,0,0], 0.15*extents, (mesh.vertices.shape[0],3))
+      mesh.vertices += displ
+      # Center the mesh
+      mesh.apply_translation(-mesh.center_mass)
 
-    mesh.process()
+      mesh.process()
     assert mesh.is_watertight
     if show:
       mesh.show()

@@ -5,7 +5,7 @@ from siamrl import utils
 # module's function calls
 try:
   from siamrl import baselines
-except ModuleNotFoundError as e:
+except ImportError as e:
   import types
   exception = e
   def f(**kwargs):

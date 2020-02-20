@@ -14,11 +14,12 @@ setup(name='siamrl',
       author='André Menezes',
       author_email='andre.menezes@tecnico.ulisboa.pt',
       install_requires=['numpy', 
-                        'tensorflow>=2.1.0', 
+                        'tf-nightly', 
                         'gym', 
                         'pybullet', 
                         'tf-agents-nightly'],
-      extra_requires={'all': ['trimesh', 'opencv-python'],
+      extra_requires={'all': ['trimesh', 'opencv-python', 'matplotlib'],
                       'generator': ['trimesh'],
-                      'baseline': ['opencv-python']}
+                      'baseline': ['opencv-python'],
+                      'plot': ['matplotlib']}
 )

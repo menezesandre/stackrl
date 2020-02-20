@@ -9,8 +9,9 @@ path = os.path.join(getDataPath(),'generated')
 
 # Catch the exception if trimesh is not instaled
 try:
-  generate.fromBox(n=500, directory=path, name='b')
-  generate.fromIcosphere(n=1000, directory=path, name='i')
-  generate.fromIcosphere(n=1000, convex=True, directory=path, name='ic')
-except ModuleNotFoundError:
+  generate.fromBox(n=200, deformation=False, directory=path, name='bp')
+  generate.fromBox(n=400, directory=path, name='b')
+  generate.fromIcosphere(n=400, directory=path, name='i')
+  generate.fromIcosphere(n=4000, convex=True, directory=path, name='ic')
+except ImportError:
   print('Package installed without trimesh, no models generated')

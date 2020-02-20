@@ -3,7 +3,7 @@ from siamrl.envs.utils.camera import Camera, ElevationCamera
 # module's function calls
 try:
   from siamrl.envs.utils import model_generator as generate
-except ModuleNotFoundError as e:
+except ImportError as e:
   import types
   exception = e
   def f(**kwargs):

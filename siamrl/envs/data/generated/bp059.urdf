@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot name="bp059">
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.5548612711680769"/>
+      <inertia ixx="0.00023168437977877826" ixy="0.0" ixz="0.0" iyy="0.0005330189627700406" iyz="0.0" izz="0.0006154179251015563" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="bp059.obj"/>
+      </geometry>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="bp059.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

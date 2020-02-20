@@ -2,6 +2,7 @@
 References:
   [1](https://arxiv.org/abs/1606.09549)
 """
+import copy
 
 import tensorflow as tf
 from tensorflow.keras import layers #import Lambda, Conv2D, Flatten
@@ -10,6 +11,48 @@ from tf_agents.networks import network
 from tf_agents.specs import tensor_spec
 
 import siamrl
+
+DEFAULT_BRANCH_PARAMS = [
+  {
+    'layer':layers.Conv2D, 
+    'filters':32, 
+    'kernel_size':8, 
+    'strides':4, 
+    'activation':'relu', 
+    'padding':'same'
+  },
+  {
+    'layer':layers.Conv2D, 
+    'filters':64, 
+    'kernel_size':4, 
+    'dilation_rate':2,
+    'activation':'relu', 
+    'padding':'same'
+  },
+  {
+    'layer':layers.UpSampling2D, 
+    'size':4,
+    'interpolation':'bilinear'
+  }  
+]
+DEFAULT_POS_PARAMS = [
+  {
+    'layer':layers.Conv2D, 
+    'filters':8, 
+    'kernel_size':3, 
+    'activation':'relu', 
+    'padding':'same'
+  },
+  {
+    'layer':layers.Conv2D, 
+    'filters':1, 
+    'kernel_size':1, 
+    'padding':'same'
+  },
+  {
+    'layer':layers.Flatten
+  }  
+]
 
 def validate_input_tensor_spec(input_tensor_spec):
   assert len(input_tensor_spec) == 2
@@ -44,21 +87,27 @@ class SiamQNetwork(network.Network):
   def __init__(self,
                input_tensor_spec,
                action_spec,
+               left_params=DEFAULT_BRANCH_PARAMS,
+               right_params=None,
+               pseudo=True,
+               pos_params=DEFAULT_POS_PARAMS,
                name='SiamQNetwork',
                **kwargs):
     """
     Args:
-      input_tensor_spec: See super
-      action_spec: See super
+      input_tensor_spec: See super,
+      action_spec: See super,
       left_params: list of dictionaries, each giving the 
-        parameters for a keras Conv2D layer on the left 
+        parameters for a keras layer on the left 
         feature extractor.
       right_params: list of dictionaries, each giving the 
-        parameters for a keras Conv2D layer on the right 
+        parameters for a keras layer on the right 
         feature extractor. If None, same as left is used.
       pseudo: whether the branches have each its own layers.
         If false, layers (and weights) are shared (true siamese
         network).
+      pos_params: list of dictionaries, each giving the 
+        parameters for a keras layer after the correlation
       name: name of the model
       **kwargs: passed 
 
@@ -70,24 +119,35 @@ class SiamQNetwork(network.Network):
     super(SiamQNetwork, self).__init__(
         input_tensor_spec=input_tensor_spec, state_spec=(), 
         name=name)
-    self.left = []
-    self.left.append(layers.Conv2D(32,8,strides=4, activation='relu', padding='same'))
-    self.left.append(layers.Conv2D(64,4,dilation_rate=2, activation='relu', padding='same'))
-    self.left.append(layers.UpSampling2D(size=4))
 
-    self.right = []
-    self.right.append(layers.Conv2D(32,8,strides=4, activation='relu', padding='same'))
-    self.right.append(layers.Conv2D(64,4,dilation_rate=2, activation='relu', padding='same'))
-    self.right.append(layers.UpSampling2D(size=4))
+    # Deep copy the layers parameters (as changes are performed on
+    # the dictionaries)
+    if pseudo:
+      right_params = copy.deepcopy(right_params) if right_params is not None else copy.deepcopy(left_params)
+    left_params = copy.deepcopy(left_params)
+    pos_params = copy.deepcopy(pos_params)
+
+    self.left = []
+    for params in left_params:
+      layer = params.pop('layer')
+      self.left.append(layer(**params))
+
+    if pseudo:
+      self.right = []
+      for params in right_params:
+        layer = params.pop('layer')
+        self.right.append(layer(**params))
+    else:
+      self.right = self.left
 
     self.correlation = Correlation()
 
     self.pos = []
-    self.pos.append(layers.Conv2D(8,3, activation='relu', padding='same'))
-    self.pos.append(layers.Conv2D(1,1))
-    self.pos.append(layers.Flatten())
+    for params in pos_params:
+      layer = params.pop('layer')
+      self.pos.append(layer(**params))
 
-
+    # Build
     self.__call__(tensor_spec.sample_spec_nest(
         self.input_tensor_spec, outer_dims=(1,)))
 
@@ -105,17 +165,5 @@ class SiamQNetwork(network.Network):
       value = layer(value)
 
     return value, network_state
-
-  def create_variables(self, **kwargs):
-    if not self.built:
-      random_input = tensor_spec.sample_spec_nest(
-          self.input_tensor_spec, outer_dims=(0,))
-      random_state = tensor_spec.sample_spec_nest(
-          self.state_spec, outer_dims=(0,))
-      step_type = tf.zeros([time_step.StepType.FIRST], dtype=tf.int32)
-      self.__call__(
-          random_input, step_type=step_type, network_state=random_state,
-          **kwargs)
-
     
 

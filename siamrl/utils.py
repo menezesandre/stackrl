@@ -1,6 +1,5 @@
 import sys, os, traceback, math
 from datetime import datetime
-import matplotlib.pyplot as plt
 
 import tensorflow as tf
 
@@ -22,21 +21,23 @@ import gym
 from siamrl import networks
 from siamrl import envs
 
-def register_stack_env(model_name='ic',
-                 base_size=[0.5, 0.5],
-                 resolution=2**(-9),
-                 time_step=1./240,
-                 num_objects=50,
-                 gravity=9.8,
-                 goal=False,
-                 gui=False,
-                 state_reward=None,
-                 differential_reward=True,
-                 position_reward=False,
-                 settle_penalty=None,
-                 drop_penalty=0.,
-                 reward_scale=100.,
-                 dtype='float16'
+def register_stack_env(
+  model_name='ic',
+  base_size=[0.4375, 0.4375],
+  resolution=2**(-9),
+  time_step=1./240,
+  num_objects=50,
+  gravity=9.8,
+  use_goal=False,
+  goal_size=None,
+  gui=False,
+  state_reward=None,
+  differential_reward=True,
+  position_reward=False,
+  settle_penalty=None,
+  drop_penalty=0.,
+  reward_scale=1.,
+  dtype='float32'
 ):
   # Assert there are URDFs for the given name
   assert len(envs.data.getGeneratedURDF(model_name)) > 0
@@ -47,51 +48,53 @@ def register_stack_env(model_name='ic',
     i +=1
   new_id = model_name.upper()+'Stack-v%d'%i
   gym.register(
-      id =new_id,
+      id=new_id,
       entry_point='siamrl.envs.stack:GeneratedStackEnv',
-      max_episode_steps = num_objects,
-      kwargs = {'model_name': model_name,
-                'base_size': base_size,
-                'resolution': resolution,
-                'time_step': time_step,
-                'num_objects': num_objects,
-                'gravity': gravity,
-                'goal': goal,
-                'gui': gui,
-                'state_reward': state_reward,
-                'differential_reward': differential_reward,
-                'position_reward': position_reward,
-                'settle_penalty': settle_penalty,
-                'drop_penalty': drop_penalty,
-                'reward_scale': reward_scale,
-                'dtype': dtype}
+      max_episode_steps=num_objects,
+      kwargs={'model_name': model_name,
+              'base_size': base_size,
+              'resolution': resolution,
+              'time_step': time_step,
+              'num_objects': num_objects,
+              'gravity': gravity,
+              'use_goal': use_goal,
+              'goal_size': goal_size,
+              'gui': gui,
+              'state_reward': state_reward,
+              'differential_reward': differential_reward,
+              'position_reward': position_reward,
+              'settle_penalty': settle_penalty,
+              'drop_penalty': drop_penalty,
+              'reward_scale': reward_scale,
+              'dtype': dtype}
   )
   return new_id
 
 
-def train(agent,
-          train_env,
-          eval_env,
-          num_iterations = 20000,
-          initial_collect_steps = 64,
-          initial_collect_policy=None,
-          collect_steps_per_iteration = 1,
-          replay_buffer_max_length = 100,
-          batch_size = 64,
-          log_interval = 200,
-          log_file=sys.stdout,
-          use_time_stamp=True,
-          num_eval_episodes = 1,
-          eval_interval = 1000,
-          eval_file=sys.stdout,
-          ckpt_dir='./checkpoint',
-          policy_dir='./policy',
-          verbose=False
-          ):
+def train(
+  agent,
+  train_env,
+  eval_env=None,
+  num_iterations = 20000,
+  initial_collect_steps = 64,
+  initial_collect_policy=None,
+  collect_steps_per_iteration = 1,
+  replay_buffer_max_length = 100,
+  batch_size = 64,
+  log_interval = 200,
+  log_file=sys.stdout,
+  use_time_stamp=True,
+  num_eval_episodes = 1,
+  eval_interval = 1000,
+  eval_file=sys.stdout,
+  ckpt_dir='./checkpoint',
+  policy_dir='./policy',
+  verbose=False
+):
   if use_time_stamp:
     def print_log(line):
       stamp = str(datetime.now())
-      log_file.write(stampline+'\n')
+      log_file.write(stamp+line+'\n')
   else:
     def print_log(line):
       log_file.write(line+'\n')
@@ -103,6 +106,8 @@ def train(agent,
   else:
     def print_verbose(line):
       pass        
+  if eval_env is None:
+    eval_env = train_env
 
   agent.initialize()
 
@@ -208,16 +213,75 @@ def train(agent,
     del(saver, checkpointer, eval_driver, avg_return,
         collect_driver, replay_iter, replay_buffer)
 
-def train_ddqn(env_id,
-               num_parallel_envs=1,
-               net=networks.SiamQNetwork,
-               learning_rate=0.00001,
-               target_update_period=10000,
-               directory='.',
-               num_eval_episodes=1,
-               save_policies=False,
-               **kwargs
-               ):
+def train_ddqn_on_stack_env(
+  directory='.',
+  model_name='ic',
+  base_size=[0.4375, 0.4375],
+  resolution=2**(-9),
+  time_step=1./240,
+  num_objects=50,
+  gravity=9.8,
+  use_goal=False,
+  goal_size=None,
+  gui=False,
+  state_reward=None,
+  differential_reward=True,
+  position_reward=False,
+  settle_penalty=None,
+  drop_penalty=0.,
+  reward_scale=1.,
+  dtype='float32',
+  num_parallel_envs=1,
+  learning_rate=0.00001,
+  target_update_period=10000,
+  save_policies=False,
+  plot=False,
+  num_iterations = 20000,
+  initial_collect_steps = 64,
+  initial_collect_policy=None,
+  collect_steps_per_iteration = 1,
+  replay_buffer_max_length = 100,
+  batch_size = 64,
+  log_interval = 200,
+  log_file=sys.stdout,
+  use_time_stamp=True,
+  num_eval_episodes = 1,
+  eval_interval = 1000,
+  verbose=False,
+  **kwargs
+):
+  params = locals()
+
+  # Create the directory if it doesn't exist
+  if not os.path.isdir(directory):
+    os.makedirs(directory)
+  with open(os.path.join(directory,'params'), 'a') as f:
+    f.write(str(params)+'\n')
+  ckpt_dir = os.path.join(directory, 'checkpoint')
+  if save_policies:
+    policy_dir = os.path.join(directory, 'policy')  
+  else:
+    policy_dir = None
+  eval_file_name = os.path.join(directory, 'eval.log')
+
+  env_id = register_stack_env(
+    model_name=model_name,
+    base_size=base_size,
+    resolution=resolution,
+    time_step=time_step,
+    num_objects=num_objects,
+    gravity=gravity,
+    use_goal=use_goal,
+    goal_size=goal_size,
+    gui=gui,
+    state_reward=state_reward,
+    differential_reward=differential_reward,
+    position_reward=position_reward,
+    settle_penalty=settle_penalty,
+    drop_penalty=drop_penalty,
+    reward_scale=reward_scale,
+    dtype=dtype
+  )
   # Load an environment for training and other for evaluation
   if num_parallel_envs > 1:
     constructors = [lambda: suite_gym.load(env_id)]*num_parallel_envs
@@ -233,63 +297,75 @@ def train_ddqn(env_id,
         suite_gym.load(env_id))
 
   # Create a Q network for the environment specs
-  q_net = net(train_env.observation_spec(), 
-      train_env.action_spec())
+  q_net = networks.SiamQNetwork(train_env.observation_spec(), 
+      train_env.action_spec(), **kwargs)
   optimizer = tf.keras.optimizers.Adam(learning_rate)
   train_step_counter = common.create_variable('train_step_counter')
   # Create a Double DQN agent
   agent = dqn_agent.DdqnAgent(
-      train_env.time_step_spec(),
-      train_env.action_spec(),
-      q_network=q_net,
-      optimizer=optimizer,
-      target_update_period=target_update_period,
-      td_errors_loss_fn=common.element_wise_squared_loss,
-      train_step_counter=train_step_counter)
-
-  # Create the directory if it doesn't exist
-  if not os.path.isdir(directory):
-    os.makedirs(directory)
-  ckpt_dir = os.path.join(directory, 'checkpoint')
-  if save_policies:
-    policy_dir = os.path.join(directory, 'policy')  
-  else:
-    policy_dir = None
-  eval_file_name = os.path.join(directory, 'eval.log')
+    train_env.time_step_spec(),
+    train_env.action_spec(),
+    q_network=q_net,
+    optimizer=optimizer,
+    target_update_period=target_update_period,
+    td_errors_loss_fn=common.element_wise_squared_loss,
+    train_step_counter=train_step_counter
+  )
 
   # Train the agent
   with open(eval_file_name, 'a') as f:
-    train(agent, train_env, eval_env, ckpt_dir=ckpt_dir,
-        policy_dir=policy_dir, eval_file=f,
-        **kwargs)
-  # Plot the evolution of the policy evaluations
-  plot_log(eval_file_name, os.path.join(directory, 'plot.png'), show=True)
+    train(agent, train_env, 
+      eval_env=eval_env, ckpt_dir=ckpt_dir,
+      policy_dir=policy_dir, eval_file=f, 
+      num_iterations=num_iterations,
+      initial_collect_steps=initial_collect_steps,
+      initial_collect_policy=initial_collect_policy,
+      collect_steps_per_iteration=collect_steps_per_iteration,
+      replay_buffer_max_length=replay_buffer_max_length,
+      batch_size=batch_size,
+      log_interval=log_interval,
+      log_file=log_file,
+      use_time_stamp=use_time_stamp,
+      num_eval_episodes=num_eval_episodes,
+      eval_interval=eval_interval,
+      verbose=verbose
+    )
+  if plot:
+    # Plot the evolution of the policy evaluations
+    plot_log(eval_file_name, os.path.join(directory, 'plot.png'), show=True)
 
-def plot_log(log_file_name, plot_file_name, show=False):
-  if not os.path.isfile(log_file_name):
-    print('No file named '+log_file_name)
-    return
-  data = {}
-  with open(log_file_name) as f:
-    l = next(f).split()
-    for i in range(len(l)//2):
-      data[l[2*i]] = [eval(l[2*i+1])]
-    for l in f:
-      l = l.split()
+
+try:
+  import matplotlib.pyplot as plt
+  def plot_log(log_file_name, plot_file_name, show=False):
+    if not os.path.isfile(log_file_name):
+      print('No file named '+log_file_name)
+      return
+    data = {}
+    with open(log_file_name) as f:
+      l = next(f).split()
       for i in range(len(l)//2):
-        data[l[2*i]].append(eval(l[2*i+1]))
-    
-  x_key = list(data.keys())[0]
-  y_keys = list(data.keys())[1:]
-  fig, axs = plt.subplots(len(y_keys), 1, sharex=True)
-  if not hasattr(axs, '__iter__'):
-    axs = [axs]
+        data[l[2*i]] = [eval(l[2*i+1])]
+      for l in f:
+        l = l.split()
+        for i in range(len(l)//2):
+          data[l[2*i]].append(eval(l[2*i+1]))
+      
+    x_key = list(data.keys())[0]
+    y_keys = list(data.keys())[1:]
+    fig, axs = plt.subplots(len(y_keys), 1, sharex=True)
+    if not hasattr(axs, '__iter__'):
+      axs = [axs]
 
-  for ax, y_key in zip(axs, y_keys):
-    ax.plot(data[x_key], data[y_key])
-    ax.set_ylabel(y_key)
-  axs[-1].set_xlabel(x_key)
-    
-  fig.savefig(plot_file_name)
-  if show:
-    fig.show()
+    for ax, y_key in zip(axs, y_keys):
+      ax.plot(data[x_key], data[y_key])
+      ax.set_ylabel(y_key)
+    axs[-1].set_xlabel(x_key)
+      
+    fig.savefig(plot_file_name)
+    if show:
+      fig.show()
+except ImportError as e:
+  exception = e
+  def plot_log(**kwargs):
+    raise exception
