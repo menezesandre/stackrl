@@ -6,7 +6,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
  
 setup(name='siamrl',
-      version='0.3',
+      version='0.4',
       description='', #TODO
       long_description=long_description,
       long_description_content_type='text/markdown',

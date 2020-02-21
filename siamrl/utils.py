@@ -125,7 +125,7 @@ def train(
       observers=[replay_buffer.add_batch],
       num_steps=collect_steps_per_iteration)
 
-  avg_return = tf_metrics.AverageReturnMetric()
+  avg_return = tf_metrics.AverageReturnMetric(batch_size=eval_env.batch_size)
   eval_driver = dynamic_episode_driver.DynamicEpisodeDriver(
       eval_env, agent.policy, observers=[avg_return], 
       num_episodes=num_eval_episodes)
