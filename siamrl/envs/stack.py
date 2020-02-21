@@ -420,8 +420,8 @@ class BaseStackEnv(gym.Env):
       width = self.np_random.randint(self.object_cam.width, 
           high=int(self.overhead_cam.width/np.sqrt(2)))
     else:
-      height = self._goal_size[0]
-      width = self._goal_size[1]
+      height = int(self._goal_size[0]/self.resolution)
+      width = int(self._goal_size[1]/self.resolution)
 
     depth = ELEVATION_FACTOR*self.num_objects/(width*height*self.resolution**2)
     # Target structure position
