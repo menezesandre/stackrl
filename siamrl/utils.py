@@ -37,6 +37,7 @@ def register_stack_env(
   settle_penalty=None,
   drop_penalty=0.,
   reward_scale=1.,
+  seed=None,
   dtype='float32'
 ):
   # Assert there are URDFs for the given name
@@ -66,6 +67,7 @@ def register_stack_env(
               'settle_penalty': settle_penalty,
               'drop_penalty': drop_penalty,
               'reward_scale': reward_scale,
+              'seed': seed,
               'dtype': dtype}
   )
   return new_id
@@ -75,17 +77,17 @@ def train(
   agent,
   train_env,
   eval_env=None,
-  num_iterations = 20000,
-  initial_collect_steps = 64,
+  num_iterations = 100000,
+  initial_collect_steps = 1000,
   initial_collect_policy=None,
   collect_steps_per_iteration = 1,
-  replay_buffer_max_length = 100,
+  replay_buffer_max_length = 100000,
   batch_size = 64,
-  log_interval = 200,
+  log_interval = 500,
   log_file=sys.stdout,
   use_time_stamp=True,
-  num_eval_episodes = 1,
-  eval_interval = 1000,
+  num_eval_episodes = 10,
+  eval_interval = 5000,
   eval_file=sys.stdout,
   ckpt_dir='./checkpoint',
   policy_dir='./policy',
@@ -94,7 +96,7 @@ def train(
   if use_time_stamp:
     def print_log(line):
       stamp = str(datetime.now())
-      log_file.write(stamp+line+'\n')
+      log_file.write(stamp+': '+line+'\n')
   else:
     def print_log(line):
       log_file.write(line+'\n')
@@ -230,6 +232,7 @@ def train_ddqn_on_stack_env(
   settle_penalty=None,
   drop_penalty=0.,
   reward_scale=1.,
+  seed=None,
   dtype='float32',
   num_parallel_envs=1,
   learning_rate=0.00001,
@@ -280,6 +283,7 @@ def train_ddqn_on_stack_env(
     settle_penalty=settle_penalty,
     drop_penalty=drop_penalty,
     reward_scale=reward_scale,
+    seed=seed,
     dtype=dtype
   )
   # Load an environment for training and other for evaluation
@@ -296,6 +300,8 @@ def train_ddqn_on_stack_env(
     eval_env = tf_py_environment.TFPyEnvironment(
         suite_gym.load(env_id))
 
+  if seed is not None:
+    tf.random.set_seed(seed)
   # Create a Q network for the environment specs
   q_net = networks.SiamQNetwork(train_env.observation_spec(), 
       train_env.action_spec(), **kwargs)
