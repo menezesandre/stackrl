@@ -3,6 +3,7 @@ References:
   [1](https://arxiv.org/abs/1606.09549)
 """
 import copy
+import gin
 
 import tensorflow as tf
 from tensorflow.keras import layers #import Lambda, Conv2D, Flatten
@@ -19,7 +20,8 @@ DEFAULT_BRANCH_PARAMS = [
     'kernel_size':8, 
     'strides':4, 
     'activation':'relu', 
-    'padding':'same'
+    'padding':'same',
+    'kernel_initializer':'he_uniform'
   },
   {
     'layer':layers.Conv2D, 
@@ -27,7 +29,8 @@ DEFAULT_BRANCH_PARAMS = [
     'kernel_size':4, 
     'dilation_rate':2,
     'activation':'relu', 
-    'padding':'same'
+    'padding':'same',
+    'kernel_initializer':'he_uniform'
   },
   {
     'layer':layers.UpSampling2D, 
@@ -38,16 +41,18 @@ DEFAULT_BRANCH_PARAMS = [
 DEFAULT_POS_PARAMS = [
   {
     'layer':layers.Conv2D, 
-    'filters':8, 
-    'kernel_size':3, 
+    'filters':32, 
+    'kernel_size':5, 
     'activation':'relu', 
-    'padding':'same'
+    'padding':'same',
+    'kernel_initializer':'he_uniform'
   },
   {
     'layer':layers.Conv2D, 
     'filters':1, 
     'kernel_size':1, 
-    'padding':'same'
+    'padding':'same',
+    'kernel_initializer':'he_uniform'
   },
   {
     'layer':layers.Flatten
@@ -73,7 +78,7 @@ class Correlation(layers.Layer):
   def call(self, inputs):
     return tf.map_fn(self._correlation, inputs, dtype=inputs[0].dtype)
 
-
+@gin.configurable
 class SiamQNetwork(network.Network):
   """
   tf_agents Network wrapper of the PseudoSiamFCN model
@@ -84,15 +89,17 @@ class SiamQNetwork(network.Network):
   (* branch weights are not shared)
   """
 
-  def __init__(self,
-               input_tensor_spec,
-               action_spec,
-               left_params=DEFAULT_BRANCH_PARAMS,
-               right_params=None,
-               pseudo=True,
-               pos_params=DEFAULT_POS_PARAMS,
-               name='SiamQNetwork',
-               **kwargs):
+  def __init__(
+    self,
+    input_tensor_spec,
+    action_spec,
+    left_params=DEFAULT_BRANCH_PARAMS,
+    right_params=None,
+    pseudo=True,
+    pos_params=DEFAULT_POS_PARAMS,
+    seed=None,
+    name='SiamQNetwork'
+  ):
     """
     Args:
       input_tensor_spec: See super,
@@ -126,6 +133,9 @@ class SiamQNetwork(network.Network):
       right_params = copy.deepcopy(right_params) if right_params is not None else copy.deepcopy(left_params)
     left_params = copy.deepcopy(left_params)
     pos_params = copy.deepcopy(pos_params)
+
+    if seed is not None:
+      tf.random.set_seed(seed)
 
     self.left = []
     for params in left_params:
