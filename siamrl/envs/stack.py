@@ -385,7 +385,7 @@ class BaseStackEnv(gym.Env):
     if self._use_goal:
       reward = self._reward_op(self._overhead_img, self._goal) - self._penalty
       if self._position_reward > 0.:
-        for obj in self._object_ids:
+        for obj in self._object_ids[:-1]:
           reward += self._position_reward*(1 if self._inside_goal(obj) else -1)
     else:
       reward = self._reward_op(self._overhead_img) - self._penalty
