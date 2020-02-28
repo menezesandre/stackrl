@@ -13,50 +13,48 @@ from tf_agents.specs import tensor_spec
 
 import siamrl
 
+gin.external_configurable(layers.Conv2D)
+gin.external_configurable(layers.SeparableConv2D)
+gin.external_configurable(layers.UpSampling2D)
+gin.external_configurable(layers.Flatten)
+
 DEFAULT_BRANCH_PARAMS = [
-  {
-    'layer':layers.Conv2D, 
-    'filters':32, 
-    'kernel_size':8, 
-    'strides':4, 
-    'activation':'relu', 
-    'padding':'same',
-    'kernel_initializer':'he_uniform'
-  },
-  {
-    'layer':layers.Conv2D, 
-    'filters':64, 
-    'kernel_size':4, 
-    'dilation_rate':2,
-    'activation':'relu', 
-    'padding':'same',
-    'kernel_initializer':'he_uniform'
-  },
-  {
-    'layer':layers.UpSampling2D, 
-    'size':4,
-    'interpolation':'bilinear'
-  }  
+  lambda: layers.Conv2D(
+    filters=32, 
+    kernel_size=8,
+    strides=4, 
+    activation='relu', 
+    padding='same',
+    kernel_initializer='he_uniform'
+  ),
+  lambda: layers.Conv2D(
+    filters=64, 
+    kernel_size=4,
+    dilation_rate=2, 
+    activation='relu', 
+    padding='same',
+    kernel_initializer='he_uniform'
+  ),
+  lambda: layers.UpSampling2D( 
+    size=4,
+    interpolation='bilinear'
+  )  
 ]
 DEFAULT_POS_PARAMS = [
-  {
-    'layer':layers.Conv2D, 
-    'filters':32, 
-    'kernel_size':5, 
-    'activation':'relu', 
-    'padding':'same',
-    'kernel_initializer':'he_uniform'
-  },
-  {
-    'layer':layers.Conv2D, 
-    'filters':1, 
-    'kernel_size':1, 
-    'padding':'same',
-    'kernel_initializer':'he_uniform'
-  },
-  {
-    'layer':layers.Flatten
-  }  
+  lambda: layers.Conv2D(
+    filters=32, 
+    kernel_size=5,
+    activation='relu', 
+    padding='same',
+    kernel_initializer='he_uniform'
+  ),
+  lambda: layers.Conv2D(
+    filters=1, 
+    kernel_size=1,
+    padding='same',
+    kernel_initializer='he_uniform'
+  ),
+  lambda: layers.Flatten()
 ]
 
 def validate_input_tensor_spec(input_tensor_spec):
@@ -93,10 +91,11 @@ class SiamQNetwork(network.Network):
     self,
     input_tensor_spec,
     action_spec,
-    left_params=DEFAULT_BRANCH_PARAMS,
-    right_params=None,
+    batch_size=None,
+    left_layers=DEFAULT_BRANCH_PARAMS,
+    right_layers=None,
     pseudo=True,
-    pos_params=DEFAULT_POS_PARAMS,
+    pos_layers=DEFAULT_POS_PARAMS,
     seed=None,
     name='SiamQNetwork'
   ):
@@ -104,12 +103,11 @@ class SiamQNetwork(network.Network):
     Args:
       input_tensor_spec: See super,
       action_spec: See super,
-      left_params: list of dictionaries, each giving the 
-        parameters for a keras layer on the left 
-        feature extractor.
-      right_params: list of dictionaries, each giving the 
-        parameters for a keras layer on the right 
-        feature extractor. If None, same as left is used.
+      left_layers: list of layer constructors for the layers
+        on the left feature extractor.
+      right_layers: list of layer constructors for the layers
+        on the right feature extractor. If None, same as left
+        is used.
       pseudo: whether the branches have each its own layers.
         If false, layers (and weights) are shared (true siamese
         network).
@@ -127,39 +125,34 @@ class SiamQNetwork(network.Network):
         input_tensor_spec=input_tensor_spec, state_spec=(), 
         name=name)
 
-    # Deep copy the layers parameters (as changes are performed on
-    # the dictionaries)
-    if pseudo:
-      right_params = copy.deepcopy(right_params) if right_params is not None else copy.deepcopy(left_params)
-    left_params = copy.deepcopy(left_params)
-    pos_params = copy.deepcopy(pos_params)
+    if right_layers is None:
+      right_layers = left_layers
 
     if seed is not None:
       tf.random.set_seed(seed)
 
     self.left = []
-    for params in left_params:
-      layer = params.pop('layer')
-      self.left.append(layer(**params))
+    for layer in left_layers:
+      self.left.append(layer())
 
     if pseudo:
       self.right = []
-      for params in right_params:
-        layer = params.pop('layer')
-        self.right.append(layer(**params))
+      for layer in right_layers:
+        self.right.append(layer())
     else:
       self.right = self.left
 
     self.correlation = Correlation()
 
     self.pos = []
-    for params in pos_params:
-      layer = params.pop('layer')
-      self.pos.append(layer(**params))
+    for layer in pos_layers:
+      self.pos.append(layer())
 
     # Build
+    if batch_size is None:
+      batch_size = 1
     self.__call__(tensor_spec.sample_spec_nest(
-        self.input_tensor_spec, outer_dims=(1,)))
+        self.input_tensor_spec, outer_dims=(batch_size,)))
 
 
   def call(self, observation, step_type=None, network_state=(),
