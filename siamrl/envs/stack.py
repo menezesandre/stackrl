@@ -76,7 +76,7 @@ class BaseStackEnv(gym.Env):
   Subclasses can override the following methods:
     _observation() - to change the observation returned by step() (set 
       observation_space acordingly) 
-    _action_to_pose() - to change the way actions are intrepreted (set
+    _action() - to change the way actions are intrepreted (set
       action_space acordingly)
     _reward() - to change the reward returned by step()
     _get_data_path() - to use models from a different path
@@ -88,29 +88,35 @@ class BaseStackEnv(gym.Env):
   """
   metadata = {'render.modes': ['depth_array']}
 
-  def __init__(self,
-              base_size=[0.4375, 0.4375],
-              resolution=2.**(-9),
-              time_step=1./240,
-              num_objects=100,
-              gravity=9.8,
-              gui=False,
-              use_goal=False,
-              goal_size=None,
-              flat_action=True,
-              state_reward=None,
-              differential_reward=True,
-              position_reward=0.,
-              settle_penalty=None,
-              drop_penalty=0.,
-              reward_scale=1.,
-              info=False,
-              seed=None,
-              dtype='float32'):
+  def __init__(
+    self,
+    base_size=[0.4375, 0.4375],
+    resolution=2.**(-9),
+    time_step=1./240,
+    sim_steps=None,
+    num_objects=100,
+    gravity=9.8,
+    gui=False,
+    use_goal=False,
+    goal_size=None,
+    flat_action=True,
+    state_reward=None,
+    differential_reward=True,
+    position_reward=0.,
+    settle_penalty=None,
+    drop_penalty=0.,
+    reward_scale=1.,
+    info=False,
+    seed=None,
+    dtype='float32'
+  ):
     """
     Args:
       base_size: dimensions of the observable space, in m.
       resolution: size of a pixel of the observation images, in m.
+      time_step: lenght of the simulation time step, in s.
+      sim_steps: number of simulation steps per environment step.
+        If None, a condition is applied on the objects' state.
       num_objects: number of objects used in an episode.
       gravity: gravitational acelaration to use on simulation.
       gui: whether to use the pybullet GUI.
@@ -145,6 +151,7 @@ class BaseStackEnv(gym.Env):
     self.size = np.round(np.array(base_size)/(resolution*MIN_DIV))*resolution*MIN_DIV
     self.resolution = resolution    
     self._time_step = time_step
+    self._sim_steps = sim_steps
     self.spawn_z = 2*MAX_ELEVATION
     self.num_objects = num_objects
     self._gravity = gravity
@@ -179,20 +186,22 @@ class BaseStackEnv(gym.Env):
 
     # Set the cameras for observation
     self.overhead_cam = ElevationCamera(
-        client=self.sim,
-        cameraPos=[0,0,CAMERA_DISTANCE],
-        width=self.size[1], 
-        height=self.size[0], 
-        depthRange=[-MAX_ELEVATION - 2*OBJ_MAX_DEPTH, 0], 
-        resolution=self.resolution)
+      client=self.sim,
+      cameraPos=[0,0,CAMERA_DISTANCE],
+      width=self.size[1], 
+      height=self.size[0], 
+      depthRange=[-MAX_ELEVATION - 2*OBJ_MAX_DEPTH, 0], 
+      resolution=self.resolution
+    )
     self.object_cam = ElevationCamera(
-        client=self.sim, 
-        targetPos=[0, 0, self.spawn_z],
-        cameraPos=[0,0,self.spawn_z-CAMERA_DISTANCE], 
-        width=OBJ_MAX_SIDE, 
-        height=OBJ_MAX_SIDE, 
-        depthRange=[-OBJ_MAX_DEPTH, OBJ_MAX_DEPTH], 
-        resolution=self.resolution)
+      client=self.sim, 
+      targetPos=[0, 0, self.spawn_z],
+      cameraPos=[0,0,self.spawn_z-CAMERA_DISTANCE], 
+      width=OBJ_MAX_SIDE, 
+      height=OBJ_MAX_SIDE, 
+      depthRange=[-OBJ_MAX_DEPTH, OBJ_MAX_DEPTH], 
+      resolution=self.resolution
+    )
     self._overhead_img = np.array([], dtype=self.dtype)
     self._object_img = np.array([], dtype=self.dtype)
     if self._use_goal:
@@ -201,13 +210,15 @@ class BaseStackEnv(gym.Env):
     # Set observation space
     self.observation_space = spaces.Tuple((
       spaces.Box(low=0.0, high=MAX_ELEVATION, dtype=self.dtype,
-        shape=(self.overhead_cam.height,
-               self.overhead_cam.width, 
-               self.overhead_cam.channels + (1 if self._use_goal else 0))),
+        shape=(
+          self.overhead_cam.height,
+          self.overhead_cam.width, 
+          self.overhead_cam.channels + (1 if self._use_goal else 0))),
       spaces.Box(low=0.0, high=2*OBJ_MAX_DEPTH, dtype=self.dtype, 
-        shape=(self.object_cam.height, 
-               self.object_cam.width, 
-               self.object_cam.channels))
+        shape=(
+          self.object_cam.height, 
+          self.object_cam.width, 
+          self.object_cam.channels))
       ))
     # Set action space
     if flat_action:
@@ -295,33 +306,25 @@ class BaseStackEnv(gym.Env):
   def step(self, action):
     # Reset if necessary
     if self._done:
-      return self.reset()
+      return self.reset(), 0., False, {}
     # Assert action is in the action space
     assert self.action_space.contains(action)
 
     # Set last object's position according to given action
-    position, orientation = self._action_to_pose(action)
-    self.sim.resetBasePositionAndOrientation(self._object_ids[-1], position, orientation)
-    self.sim.stepSimulation()
-    counter = 0
-    # Step simulation until all objects settle
-    while not self._step_done():
-      self.sim.stepSimulation()
-      counter +=1
-
+    self._action(action)
+    # Simulation steps
+    counter = self._step()
     # Add the penalty for the time taken to settle
     self._penalty += self._settle_penalty(counter)
-
     # Spawn the object to be placed on next step
     self._new_state()
 
-    if self._info:
-      info = {'max': np.max(self._overhead_img),
-              'mean': np.mean(self._overhead_img),
-              'steps': counter,
-              'n_obj': len(self._object_ids)}
-    else:
-      info = {}
+    info = {
+      'max': np.max(self._overhead_img),
+      'mean': np.mean(self._overhead_img),
+      'steps': counter,
+      'n_obj': len(self._object_ids)
+    } if self._info else {}
 
     return self._observation(), self._reward(), self._done, info
 
@@ -385,7 +388,7 @@ class BaseStackEnv(gym.Env):
     if self._use_goal:
       reward = self._reward_op(self._overhead_img, self._goal) - self._penalty
       if self._position_reward > 0.:
-        for obj in self._object_ids[:-1]:
+        for obj in self._object_ids:
           reward += self._position_reward*(1 if self._inside_goal(obj) else -1)
     else:
       reward = self._reward_op(self._overhead_img) - self._penalty
@@ -403,9 +406,8 @@ class BaseStackEnv(gym.Env):
   def _inside_goal(self, object_id):
     pos, _ = self.sim.getBasePositionAndOrientation(object_id)
     pix = self._position_to_pixel(pos)
-    if (pix[0] not in range(self.object_cam.height) or 
-      pix[1] not in range(self.object_cam.width)
-    ):
+    if pix[0] >= self.overhead_cam.height or \
+      pix[1] >= self.overhead_cam.width:
       return False
     return self._goal[pix[0],pix[1]]
 
@@ -441,8 +443,8 @@ class BaseStackEnv(gym.Env):
     # Pop a file from the urdf list and load it into the simulator
     if len(self._urdf_list) > 0:
       filename = self._urdf_list.pop()
-      self._object_ids.append(self.sim.loadURDF(filename, 
-          basePosition=[0, 0, self.spawn_z]))
+      self._new_object_id = self.sim.loadURDF(filename, 
+          basePosition=[0, 0, self.spawn_z])
     else:
       # The episode ends when the list is empty 
       self._done = True
@@ -453,10 +455,28 @@ class BaseStackEnv(gym.Env):
 
     # This is unnecessary if MAX_ELEVATION is big enough for the 
     # number of objects
-#    if np.max(self._overhead_img) >= MAX_ELEVATION:
-#      self._done = True
+    # if np.max(self._overhead_img) >= MAX_ELEVATION:
+    #   self._done = True
     if self._use_goal and np.all(self._overhead_img>self._goal):
       self._done = True
+
+  def _step(self):
+    """
+    Step the simulation until the environment step is done.
+    Returns:
+      Number of simulation steps
+    """
+    counter = 0
+    if self._sim_steps is not None:
+      for _ in range(self._sim_steps):
+        self.sim.stepSimulation()
+    else:
+      self.sim.stepSimulation()
+      # Step simulation until all objects settle
+      while not self._step_done():
+        counter +=1
+        self.sim.stepSimulation()
+    return counter
 
   def _step_done(self):
     """
@@ -473,22 +493,23 @@ class BaseStackEnv(gym.Env):
     # the list backwards assures only one object is checked for most
     # steps
     for obj in self._object_ids[::-1]:
-      pos, _ = self.sim.getBasePositionAndOrientation(obj)
-      # If object fell off the base, remove it and add the penalty 
-      if pos[2] < 0:
-        self.sim.removeBody(obj)
-        self._object_ids.remove(obj)
-        self._penalty += self._drop_penalty
-        continue
+      if self._drop_penalty:
+        pos, _ = self.sim.getBasePositionAndOrientation(obj)
+        # If object fell off the base, remove it and add the penalty 
+        if pos[2] < 0:
+          self.sim.removeBody(obj)
+          self._object_ids.remove(obj)
+          self._penalty += self._drop_penalty
+          continue
       if np.linalg.norm(np.array(self.sim.getBaseVelocity(obj))[0,:]
           ) > VELOCITY_THRESHOLD:
         return False
     return True
 
-  def _action_to_pose(self, action):
+  def _action(self, action):
     """
     Converts the index(es) from action into a pose on the physical
-      environment
+      environment and places the new object.
     """
     if self.flat_action:
       action = [action//self.action_width, action%self.action_width]
@@ -499,7 +520,9 @@ class BaseStackEnv(gym.Env):
     elevation = self._overhead_img[action[0]:action[0]+self.object_cam.height, 
       action[1]:action[1]+self.object_cam.width] + self._object_img 
     z = np.max(elevation[self._object_img>10**(-3)]) - OBJ_MAX_DEPTH
-    return [x, y, z], [0,0,0,1]
+
+    self.sim.resetBasePositionAndOrientation(self._new_object_id, [x,y,z], [0,0,0,1])
+    self._object_ids.append(self._new_object_id)
 
   def _position_to_pixel(self, pos):
     u = (pos[0]+self.size[0]/2)/self.resolution

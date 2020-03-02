@@ -24,7 +24,7 @@ except:
 
 setup(
   name='siamrl',
-  version='1.0',
+  version='1.0.0301',
   description='', #TODO
   long_description=long_description,
   long_description_content_type='text/markdown',
