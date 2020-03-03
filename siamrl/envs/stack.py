@@ -407,6 +407,7 @@ class BaseStackEnv(gym.Env):
     pos, _ = self.sim.getBasePositionAndOrientation(object_id)
     pix = self._position_to_pixel(pos)
     if pix[0] >= self.overhead_cam.height or \
+      pix[0] < 0 or pix[1] < 0 or \
       pix[1] >= self.overhead_cam.width:
       return False
     return self._goal[pix[0],pix[1]]

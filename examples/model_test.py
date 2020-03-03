@@ -19,7 +19,7 @@ if __name__=='__main__':
       env.action_spec())
 
 
-  policy = tf.saved_model.load('./90000')
+  policy = tf.saved_model.load('./130000')
 
   metric = tf_metrics.AverageReturnMetric()
   driver = dynamic_step_driver.DynamicStepDriver(env, policy, 

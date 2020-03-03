@@ -10,7 +10,8 @@ from tf_agents.metrics import py_metrics, py_metric
 from tf_agents.drivers import py_driver
 
 if __name__=='__main__':
-  env_id = siamrl.utils.register.stack_env(num_objects=50, use_goal=True, state_reward='nd', differential_reward=False)
+#  env_id = siamrl.utils.register.stack_env(num_objects=50, use_goal=True, state_reward='nd', differential_reward=False)
+  env_id = siamrl.utils.register.goal_env(num_objects=64, resolution=2**(-8), dtype='float16')
   env = suite_gym.load(env_id)
   policies = [
     random_py_policy.RandomPyPolicy(
@@ -27,7 +28,7 @@ if __name__=='__main__':
   for policy in policies:
     metric = py_metrics.AverageReturnMetric()
     driver = py_driver.PyDriver(
-        env, policy, [metric], max_episodes=3)
+        env, policy, [metric], max_episodes=10)
 
     initial_time_step = env.reset()
     final_time_step, _ = driver.run(initial_time_step)
