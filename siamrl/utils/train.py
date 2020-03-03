@@ -189,8 +189,9 @@ def train(
 
 
 @gin.configurable
-def ddqn_stack(
+def ddqn(
   directory='.',
+  register_env=register.stack_env,
   num_parallel_envs=1,
   q_network=networks.SiamQNetwork,
   learning_rate=0.00001,
@@ -212,7 +213,7 @@ def ddqn_stack(
     log_to_file else sys.stdout
   eval_file = os.path.join(directory, 'eval.log')
 
-  env_id = register.stack_env()
+  env_id = register_env()
   # Load an environment for training and other for evaluation
   if num_parallel_envs > 1:
     constructors = [lambda: suite_gym.load(env_id)]*num_parallel_envs

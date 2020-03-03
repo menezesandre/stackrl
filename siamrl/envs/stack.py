@@ -574,6 +574,32 @@ class GeneratedStackEnv(BaseStackEnv):
     return list(self.np_random.choice(self._full_list, 
         size=self.num_objects, replace=replace))
 
+class GoalEnv(GeneratedStackEnv):
+  def __init__(self, **kwargs):
+    super(GoalEnv, self).__init__(use_goal=True, **kwargs)
+
+  def step(self, action):
+    # Reset if necessary
+    if self._done:
+      return self.reset(), 0., False, {}
+    # Assert action is in the action space
+    assert self.action_space.contains(action)
+
+    # Set last object's position according to given action
+    self._action(action)
+    # Compute reward based on whether the object is inside
+    # the goal
+    obj = self._object_ids.pop()
+    reward = 1. if self._inside_goal(obj) else -1.
+    reward *= self._reward_scale
+    # Remove the object
+    self.sim.removeBody(obj)
+    # Spawn the object to be placed on next step
+    self._new_state()
+
+    return self._observation(), reward, self._done, {}
+  
+
 class GeneratingStackEnv(BaseStackEnv):
   """
   Stack environment where the objects to stack are temporary 

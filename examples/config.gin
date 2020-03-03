@@ -53,10 +53,10 @@ train.verbose = True
 train.exception_actions=[@exception/send_file]
 train.finally_actions=[@train/send_file, @eval/send_file]
 
-ddqn_stack.directory='./test'
-ddqn_stack.num_parallel_envs=1
-ddqn_stack.learning_rate=0.00001
-ddqn_stack.target_update_period=10000
-ddqn_stack.save_policies=False
-ddqn_stack.plot=False
-ddqn_stack.log_to_file=True
+ddqn.directory='./test'
+ddqn.num_parallel_envs=1
+ddqn.learning_rate=0.00001
+ddqn.target_update_period=10000
+ddqn.save_policies=False
+ddqn.plot=False
+ddqn.log_to_file=True
