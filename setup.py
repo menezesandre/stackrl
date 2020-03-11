@@ -10,7 +10,7 @@ REQUIRES = [
   'gym', 
   'pybullet',
   'gin-config',
-  'tf-agents-nightly']
+  'tf-agents==0.3.0']
 
 
 # Only add this requirement if tensorflow is not installed.
@@ -18,9 +18,9 @@ REQUIRES = [
 # project name (e.g. tf-nightly-gpu).
 try:
   import tensorflow as tf
-  assert eval(tf.__version__[:3]) >= 2.2
+  assert eval(tf.__version__[:3]) == 2.0
 except:
-  REQUIRES.insert(-1, 'tf-nightly')
+  REQUIRES.insert(-1, 'tensorfow==2.0.0')
 
 setup(
   name='siamrl',
