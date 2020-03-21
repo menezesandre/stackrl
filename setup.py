@@ -10,6 +10,7 @@ REQUIRES = [
   'gym', 
   'pybullet',
   'gin-config',
+  'tensorflow-probability==0.8.0',
   'tf-agents==0.3.0']
 
 
@@ -20,11 +21,11 @@ try:
   import tensorflow as tf
   assert eval(tf.__version__[:3]) == 2.0
 except:
-  REQUIRES.insert(-1, 'tensorfow==2.0.0')
+  REQUIRES.insert(-1, 'tensorflow==2.0.0')
 
 setup(
   name='siamrl',
-  version='1.0.0301',
+  version='1.3.21',
   description='', #TODO
   long_description=long_description,
   long_description_content_type='text/markdown',
@@ -33,7 +34,7 @@ setup(
   author_email='andre.menezes@tecnico.ulisboa.pt',
   install_requires=REQUIRES,
   extra_requires={'all': ['trimesh', 'opencv-python', 'matplotlib'],
-                      'generator': ['trimesh'],
-                      'baseline': ['opencv-python'],
-                      'plot': ['matplotlib']}
+                  'generator': ['trimesh'],
+                  'baseline': ['opencv-python'],
+                  'plot': ['matplotlib']}
 )

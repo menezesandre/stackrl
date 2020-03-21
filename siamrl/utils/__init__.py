@@ -1,4 +1,4 @@
-from siamrl.utils import train, register, mail
+from siamrl.utils import mail
 
 try:
   from siamrl.utils import plot

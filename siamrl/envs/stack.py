@@ -460,6 +460,7 @@ class BaseStackEnv(gym.Env):
     #   self._done = True
     if self._use_goal and np.all(self._overhead_img>self._goal):
       self._done = True
+      self._penalty -= self.num_objects # Reward for achieving goal
 
   def _step(self):
     """

@@ -2,7 +2,7 @@ from gym import register
 from siamrl.envs import data
 from siamrl.envs.data import getDataPath
 from siamrl.envs import stack
-
+from siamrl.envs import register
 MAX_EPISODE_STEPS = 50
 
 """

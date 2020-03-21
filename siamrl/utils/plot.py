@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import os
 
 def from_log(log_file_name, plot_file_name, show=False):
   if not os.path.isfile(log_file_name):
