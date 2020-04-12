@@ -1,34 +1,53 @@
-import os
-import glob
+from os import path as _path
+from glob import glob as _glob
 
-def getDataPath():
-  """
-  Return:
-    The path to the 'data' directory (this directory).
-  """
-  resdir = os.path.join(os.path.dirname(__file__))
-  return resdir
-
-def getGeneratedFiles(pattern='i*.urdf'):
+def path(path=None):
   """
   Args:
-    pattern: format of the names of the required files
-
+    path: relative path from this directory
+      ('siamrl/envs/data').
   Return:
-    A list of the files from 'generated' directory that match
-    the format
-    
+    The absolute path to 'siamrl/envs/data/path' or,
+    if no path is given, to this directory.
+  Raises:
+    FileNotFoundError: if path doesn't exist in this
+      directory.
   """
-  resdir = os.path.join(os.path.dirname(__file__))
-  pattern = os.path.join(resdir, 'generated', pattern)
-  return glob.glob(pattern)
+  dirname = _path.dirname(__file__)
+  if path:
+    path = _path.join(dirname,path)
+    if _path.exists(path):
+      return path
+    else:
+      raise FileNotFoundError(
+        'No such file or directory: {}'.format(path)
+      )
+  else:
+    return dirname
 
-def getGeneratedURDF(name='i'):
+_open = open
+def open(file, **kwargs):
+  """Wrapper of the built-in function open() that prepends 
+    the absolute path to 'siamrl/envs/data' to the file path."""
+  return _open(_path.join(path(), file), **kwargs)
+
+def files(pattern):
+  """
+  Args:
+    pattern: format of the names of the required files.
+  Return:
+    A list of the files from 'siamrl/envs/data' directory that
+    match the pattern.
+  """
+  return _glob(_path.join(path(), pattern))
+
+def generated(name='i'):
   """
   Args:
     name: common name of required urdf's
 
   Return:
-    A list of the urdf's that start with given name
+    A list of the urdf's that start with given name, from the 
+    'generated' directory
   """
-  return getGeneratedFiles(name+'*.urdf')
+  return files(_path.join('generated',name+'*.urdf'))

@@ -6,7 +6,7 @@ import copy
 import gin
 
 import tensorflow as tf
-from tensorflow.keras import layers #import Lambda, Conv2D, Flatten
+from tensorflow.keras import layers
 import tf_agents
 from tf_agents.networks import network
 from tf_agents.specs import tensor_spec
@@ -57,12 +57,29 @@ DEFAULT_POS_PARAMS = [
   lambda: layers.Flatten()
 ]
 
-def validate_input_tensor_spec(input_tensor_spec):
-  assert len(input_tensor_spec) == 2
-  assert len(input_tensor_spec[0].shape) == 3
-  assert len(input_tensor_spec[1].shape) == 3
-  assert input_tensor_spec[0].shape[0] >= input_tensor_spec[1].shape[0]
-  assert input_tensor_spec[0].shape[1] >= input_tensor_spec[1].shape[1]
+_floats = [tf.float16, tf.float32, tf.float64]
+_uints = [tf.uint8, tf.uint16, tf.uint32, tf.uint64]
+allowed_dtypes = _floats+_uints
+
+def _validate_input_tensor_spec(input_tensor_spec):
+  try:
+    assert len(input_tensor_spec) == 2, \
+      "Argument input_tensor_spec must have length 2."
+  except TypeError:
+    raise AssertionError("Argument input_tensor_spec must have length.")
+  assert len(input_tensor_spec[0].shape) == 3, \
+    "First inputs must have 3 dimensions [height,width,channels]."
+  assert len(input_tensor_spec[1].shape) == 3, \
+    "Second inputs must have 3 dimensions [height,width,channels]."
+  assert input_tensor_spec[0].shape[0] >= input_tensor_spec[1].shape[0], \
+    "First input must have larger height."
+  assert input_tensor_spec[0].shape[1] >= input_tensor_spec[1].shape[1], \
+    "First input must have larger width."
+  assert input_tensor_spec[0].dtype == input_tensor_spec[1].dtype, \
+    "Both inputs must be of the same data type."
+  assert input_tensor_spec[0].dtype in allowed_dtypes, \
+    "Input data type must be a float or unsigned integer."
+  return input_tensor_spec[0].dtype
  
 class Correlation(layers.Layer):
   def __init__(self):
@@ -115,15 +132,26 @@ class SiamQNetwork(network.Network):
         parameters for a keras layer after the correlation
       name: name of the model
       **kwargs: passed 
-
     Raises:
-      TypeError: if input_tensor_spec is not a list;
-      IndexError: if it doesn't have at least two elements.
+      AssertionError: if input_tensor_spec doesn't match the input 
+        requirements of the network.
     """
-    validate_input_tensor_spec(input_tensor_spec)
+    dtype = _validate_input_tensor_spec(input_tensor_spec)
+    
     super(SiamQNetwork, self).__init__(
         input_tensor_spec=input_tensor_spec, state_spec=(), 
         name=name)
+
+    if dtype == tf.uint8:
+      self._scale = tf.constant(2**8-1, dtype=tf.uint8)
+    elif dtype == tf.uint16:
+      self._scale = tf.constant(2**16-1, dtype=tf.uint16)
+    elif dtype == tf.uint32:
+      self._scale = tf.constant(2**32-1, dtype=tf.uint32)
+    elif dtype == tf.uint64:
+      self._scale = tf.constant(2**64-1, dtype=tf.uint64)
+    else:
+      self._scale = None
 
     if right_layers is None:
       right_layers = left_layers
@@ -155,10 +183,20 @@ class SiamQNetwork(network.Network):
         self.input_tensor_spec, outer_dims=(batch_size,)))
 
 
-  def call(self, observation, step_type=None, network_state=(),
-      training=False):
-    x = observation[0]
-    w = observation[1]
+  def call(
+    self, 
+    observation, 
+    step_type=None, 
+    network_state=(), 
+    training=False
+  ):
+    if self._scale is None:
+      x = observation[0]
+      w = observation[1]
+    else:
+      x = tf.cast(observation[0]/self._scale, dtype=tf.float32)
+      w = tf.cast(observation[1]/self._scale, dtype=tf.float32)
+
     for layer in self.left:
       x = layer(x)
     for layer in self.right:

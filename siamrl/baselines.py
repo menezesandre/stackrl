@@ -2,12 +2,19 @@
 Baseline policies with no learning, using 
   OpenCV's Template Matching
 """
+try:
+  import cv2 as cv
+except ImportError:
+  raise ImportError("""
+  Package 'cv2' is necessary to run baselines module.
+  Install using 'pip install opencv-python'"""
+  )
+
 import tf_agents
 from tf_agents.policies import py_policy
 from tf_agents.trajectories import policy_step
 
 import numpy as np
-import cv2 as cv
 
 __all__=['CCoeffPolicy', 'GradCorrPolicy']
 
@@ -15,6 +22,7 @@ class Base(py_policy.Base):
   """
   Base class that implements the common initialization
   """
+  methods = [] # to be overridden 
   def __init__(self, time_step_spec, action_spec,
       normed=True):
     assert len(time_step_spec.observation)==2

@@ -1,6 +1,8 @@
 import sys, os, traceback
 from datetime import datetime
 
+import numpy as np
+
 import gin
 import gin.tf.external_configurables
 
@@ -37,6 +39,7 @@ class Training(object):
     replay_buffer=tf_uniform_replay_buffer.TFUniformReplayBuffer,
     sample_batch_size=32,
     collect_metrics=[],
+    collect_metrics_buffer_length=10,
     collect_steps_per_iteration=1,
     eval_metrics=[tf_metrics.AverageReturnMetric],
     num_eval_episodes=1,
@@ -79,7 +82,6 @@ class Training(object):
       eval_interval: number of iterations between policy evaluation.
       checkpoint_interval: number of iterations between checkpoints
     """
-
     # Environment
     if num_parallel_envs > 1:
       constructor = lambda x: tf_py_environment.TFPyEnvironment(
@@ -116,13 +118,14 @@ class Training(object):
         and self._eval_env.action_spec() == self._env.action_spec()
 
     # Agent
+    self._net = net(
+      self._env.observation_spec(), 
+      self._env.action_spec()
+    )
     self._agent = agent(
       self._env.time_step_spec(),
       self._env.action_spec(),
-      net(
-        self._env.observation_spec(), 
-        self._env.action_spec()
-      ),
+      self._net,
       optimizer(),
       train_step_counter=common.create_variable('train_step_counter')
     )
@@ -147,7 +150,8 @@ class Training(object):
     for metric in collect_metrics:
       try:
         self._collect_metrics.append(metric(
-          batch_size=self._env.batch_size
+          batch_size=self._env.batch_size,
+          buffer_size=self._env.batch_size*collect_metrics_buffer_length
         ))
       except TypeError:
         self._collect_metrics.append(metric())
@@ -163,8 +167,8 @@ class Training(object):
     for metric in eval_metrics:
       try:
         self._eval_metrics.append(metric(
-          batch_size=self._env.batch_size,
-          buffer_size=self._env.batch_size*num_eval_episodes
+          batch_size=self._eval_env.batch_size,
+          buffer_size=self._eval_env.batch_size*num_eval_episodes
         ))
       except TypeError:
         self._eval_metrics.append(metric())
@@ -195,13 +199,19 @@ class Training(object):
       replay_buffer=self._replay_buffer
     )
 
-    self._save_policy = save_evaluated_policies
-    self._policy_saver = policy_saver.PolicySaver(self._agent.policy)
-    self._policy_dir = os.path.join(directory, 'policy')  
+    self._save_weights = save_evaluated_policies
+    self._save_filepath = lambda i: os.path.join(
+      directory, 
+      'saved_weights', 
+      str(i), 
+      'weights'
+    )  
 
     self._log_interval = log_interval
     self._eval_interval = eval_interval
     self._checkpoint_interval = checkpoint_interval
+    # To be used in subclasses
+    self._callback_interval = None
 
     # Internal variables to avoid repeated operations
     self._last_checkpoint_iter = None
@@ -274,7 +284,7 @@ class Training(object):
 
   def run(
     self,
-    max_num_iterations=2**30
+    max_num_iterations=sys.maxsize
   ):
     if not self._initialized:
       self.initialize()
@@ -290,14 +300,17 @@ class Training(object):
 
         if step % self._log_interval == 0:
           self.log_iteration(Loss=loss_info.loss)
-        
+
         if step % self._checkpoint_interval == 0:
           self.checkpoint()
 
         if step % self._eval_interval == 0:
           self.eval()
-          if self._save_policy:
+          if self._save_weights:
             self.save()
+
+        if self._callback_interval and step % self._callback_interval==0:
+          self._callback()
     except:
       self.log_exception()    
     finally:
@@ -338,13 +351,10 @@ class Training(object):
     self.log('Done.')
 
   def save(self):
-    """Saves the current policy"""
+    """Saves the weights of the current Q network"""
     if self.step_counter != self._last_save_iter:
-      self.log('Saving policy...')
-      self._policy_saver.save(os.path.join(
-        self._policy_dir,
-        str(self.step_counter) 
-      ))
+      self.log("Saving Q network's weights...")
+      self._net.save_weights(self._save_filepath(self.step_counter))
       self._last_save_iter = self.step_counter
       self.log('Done.')
 
@@ -389,6 +399,10 @@ class Training(object):
     else:
       sys.stderr.write(error)
 
+  def _callback(self):
+    """To be implemented in subclasses for costum callbacks within run"""
+    raise NotImplementedError('No costum callback implemented.')
+
 @gin.configurable
 class CurriculumTraining(Training):
   """Extends Training class to implement a curriculum. A list of 
@@ -400,10 +414,12 @@ class CurriculumTraining(Training):
     self, 
     env_ids,
     curriculum_goals=None,
-    goal_metric=tf_metrics.AverageReturnMetric,
     eval_env=None,
+    collect_metrics=[],
     directory='.',
-    **kwargs):
+    check_interval=96,
+    **kwargs
+  ):
     """
     Args:
       env_ids: forms the curriculum.
@@ -412,49 +428,86 @@ class CurriculumTraining(Training):
         goal for each environment.
       curriculum_goals: reward goals to be zipped with env_ids.
         Ignored if env_ids is a dict.
-      goal_metric: metric to be used to compare with goal rewards.
       eval_env: id of a registered gym environment. If set, all
         parts of the training are evaluated with this environment.
         If None, each part is evaluated with an environment 
         similar to training.
+      check_interval: number of iterations between checks of environment
+        complete (to move on to the next one on the curriculum). Better 
+        if it is a common multiple of all environments' episode lengths
+        (number of steps per episode).
     """
     if isinstance(env_ids, dict):
-      self._curriculum = zip(env_ids.keys(), env_ids.values())
+      self._curriculum = [(e, g) 
+        for e,g in zip(env_ids.keys(),env_ids.values())
+      ][::-1]
     elif isinstance(env_ids, list):
-      self._curriculum = zip(env_ids, curriculum_goals)
+      self._curriculum = [(e, g) 
+        for e,g in zip(env_ids, curriculum_goals)
+      ][::-1] 
     else:
-      raise ValueError(
+      raise TypeError(
         'Invalid type {} for argument env_ids'.format(type(env_ids))
       )
 
-    env_id, self._current_goal = next(self._curriculum)
+    self._curriculum_file = os.path.join(directory, 'curriculum.csv')
+    if os.path.isfile(self._curriculum_file):
+      end_iter, goal = np.loadtxt(
+        self._curriculum_file,
+        delimiter=',',
+        skiprows=1,
+        unpack=True
+      )
+      for i, g in zip(end_iter, goal):
+        env_id, self._current_goal = self._curriculum.pop()
+        if self._current_goal != g:
+          self._curriculum.append((env_id, self._current_goal))
+          break
+      if len(self._curriculum) == 0:
+        self._complete = True
+      else:
+        self._complete = False
+        env_id, self._current_goal = self._curriculum.pop()
+    else:
+      self._complete = False
+      env_id, self._current_goal = self._curriculum.pop()
+
     self._replace_eval_env = eval_env is None
 
+    if tf_metrics.AverageReturnMetric in collect_metrics:
+      goal_metric_index = collect_metrics.index(
+        tf_metrics.AverageReturnMetric
+      )
+    else:
+      collect_metrics.append(tf_metrics.AverageReturnMetric)
+      goal_metric_index = -1
+
     super(CurriculumTraining, self).__init__(
-      env_id, eval_env=eval_env, directory=directory, **kwargs
+      env_id, 
+      eval_env=eval_env,
+      collect_metrics=collect_metrics,
+      directory=directory, 
+      **kwargs
     )
 
-    where_goal_metric = [
-      isinstance(i, goal_metric) for i in self._eval_metrics
-    ]
-    try:
-      self._goal_metric_index = where_goal_metric.index(True)
-    except ValueError:
-      self._eval_metrics.append(goal_metric(
-        batch_size=self._env.batch_size,
-        buffer_size=self._env.batch_size*self._eval_driver._num_episodes   
-      ))
+    self._goal_metric = self._collect_metrics[goal_metric_index]
+    self._callback_interval = check_interval
 
-    self._curriculum_file = os.path.join(directory, 'curriculum.csv')
-    self._complete = False
-    self._finish_when_complete = False
+  @property
+  def _epsilon(self):
+    return self._agent.collect_policy._get_epsilon()
 
   def initialize(self, **kwargs):
     super(CurriculumTraining, self).initialize(**kwargs)
-    self.log_curriculum
+    if not os.path.isfile(self._curriculum_file):
+      with open(self._curriculum_file, 'w') as f:
+        f.write('EndIter,Goal\n')
 
-
-  def run(self, finish_when_complete=False, **kwargs):
+  def run(
+    self,
+    max_num_iterations=sys.maxsize,
+    finish_when_complete=False
+  ):
     """
     Arg:
       finish_when_complete: Whether to stop training when last goal is
@@ -462,67 +515,73 @@ class CurriculumTraining(Training):
         until max_num_iterations is reached.
     """
     self._finish_when_complete = finish_when_complete
-    super(CurriculumTraining, self).run(**kwargs)
-
-  def eval(self, **kwargs):
-    """Wraps super's eval method to perform env replacement when goal
-    is achieved."""
-    super(CurriculumTraining, self).eval(**kwargs)
-    self._maybe_update_curriculum()
-    if self._finish_when_complete and self._complete:
-      raise StopIteration('Training goal achieved')
-
-  def _maybe_update_curriculum(self):
+    super(CurriculumTraining, self).run(
+      max_num_iterations=max_num_iterations
+    )
+    
+  def _update_environment(self):
     """Replaces the environments (and respective drivers) for the next 
-    one in the curriculum if reward goal has been achieved on last 
-    evaluation."""
-    if not self._complete and \
-      self._eval_results[self._goal_metric_index] >= self._current_goal:
-      self.log('Goal return reached.')
-      try:
-        env_id, self._current_goal = next(self._curriculum)
-        self.log('Updating environment...')
-        if self._env.batch_size > 1:
-          constructor = lambda x: tf_py_environment.TFPyEnvironment(
-            parallel_py_environment.ParallelPyEnvironment(
-              [lambda: suite_gym.load(x)]*self._env.batch_size
-            )
-          )
-        else:
-          constructor = lambda x: tf_py_environment.TFPyEnvironment(
-            suite_gym.load(x)
-          )
-        new_env = constructor(env_id)
-        assert new_env.time_step_spec() == self._env.time_step_spec() \
-          and new_env.action_spec() == self._env.action_spec()
-        new_driver = dynamic_step_driver.DynamicStepDriver(
-          new_env,
-          self._agent.collect_policy,
-          observers=[self._replay_buffer.add_batch]+self._collect_metrics,
-          num_steps=self._collect_driver._num_steps
+    one in the curriculum.
+    Raises:
+      StopIteration: when curriculum is finished.
+    """
+    env_id, self._current_goal = next(self._curriculum)
+
+    self.log('Updating environment...')
+    if self._env.batch_size > 1:
+      constructor = lambda x: tf_py_environment.TFPyEnvironment(
+        parallel_py_environment.ParallelPyEnvironment(
+          [lambda: suite_gym.load(x)]*self._env.batch_size
         )
-        del(self._env, self._collect_driver)
-        self._env = new_env
-        self._collect_driver = new_driver
+      )
+    else:
+      constructor = lambda x: tf_py_environment.TFPyEnvironment(
+        suite_gym.load(x)
+      )
+    new_env = constructor(env_id)
 
-        if self._replace_eval_env:
-          new_env = constructor(env_id)
-          assert new_env.time_step_spec() == self._env.time_step_spec() \
-            and new_env.action_spec() == self._env.action_spec()
-          new_driver = dynamic_episode_driver.DynamicEpisodeDriver(
-            new_env,
-            self._agent.policy,
-            observers=self._eval_metrics,
-            num_episodes=self._eval_driver._num_episodes
-          )
-          del(self._eval_env, self._eval_driver)
-          self._eval_env = new_env
-          self._eval_driver = new_driver
-        self.log('Done.')
-        self.log_curriculum()
-      except StopIteration:
-        self._complete = True
+    assert new_env.time_step_spec() == self._env.time_step_spec() \
+      and new_env.action_spec() == self._env.action_spec(), \
+      "All envs in curriculum must have same in and out specs."
 
-  def log_curriculum(self):
-    with open(self._curriculum_file, 'a') as f:
-      f.write('{},{}\n'.format(self.step_counter, self._current_goal))
+    new_driver = dynamic_step_driver.DynamicStepDriver(
+      new_env,
+      self._agent.collect_policy,
+      observers=[self._replay_buffer.add_batch]+self._collect_metrics,
+      num_steps=self._collect_driver._num_steps
+    )
+    del(self._env, self._collect_driver)
+    self._env = new_env
+    self._collect_driver = new_driver
+
+    if self._replace_eval_env:
+      new_env = constructor(env_id)
+
+      assert new_env.time_step_spec() == self._env.time_step_spec() \
+        and new_env.action_spec() == self._env.action_spec(), \
+        "All envs in curriculum must have same in and out specs."
+
+      new_driver = dynamic_episode_driver.DynamicEpisodeDriver(
+        new_env,
+        self._agent.policy,
+        observers=self._eval_metrics,
+        num_episodes=self._eval_driver._num_episodes
+      )
+      del(self._eval_env, self._eval_driver)
+      self._eval_env = new_env
+      self._eval_driver = new_driver
+    self.log('Done.')
+
+  def _callback(self):
+    result = self._goal_metric.result()
+    if result >= self._current_goal*self._epsilon:
+      if not self._complete:
+        self.log('Goal return achieved.')
+        with open(self._curriculum_file, 'a') as f:
+          f.write('{},{}\n'.format(self.step_counter, self._current_goal))
+        try:
+          self._update_environment()
+        except StopIteration:
+          self._complete = True
+          if self._finish_when_complete:
+            raise StopIteration('Training goal achieved.')

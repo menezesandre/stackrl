@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot name="train3837">
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.3554771116974797"/>
+      <inertia ixx="0.00011177364191528239" ixy="1.3102540902839961e-20" ixz="8.653136387917223e-20" iyy="0.0002313468454754253" iyz="1.228363209641246e-21" izz="0.000296229274437726" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="train3837.obj"/>
+      </geometry>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="train3837.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

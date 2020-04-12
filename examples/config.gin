@@ -1,5 +1,5 @@
 # Environment
-
+# stack.register
 
 # Network
 # SiamQNetwork.left_params = {}
@@ -30,65 +30,13 @@ Training.eval_interval=10000,
 Training.checkpoint_interval=10000
 
 #------
-import siamrl.utils.mail
-send_file.user = 'amenezes.log'
-send_file.password = 'logging332'
-send_file.to_addrs = 'andre.menezes@tecnico.ulisboa.pt'
-train/send_file.file = './test/train.log'
-train/send_file.subject = 'Log'
-exception/send_file.file = './test/train.log'
-exception/send_file.subject = 'Exception'
-eval/send_file.file = './test/eval.log'
-eval/send_file.subject = 'Eval'
-
-# Network parameters
-
-# SiamQNetwork.left_params = {}
-# SiamQNetwork.right_params = None
-# SiamQNetwork.pseudo = True
-# SiamQNetwork.pos_params = {}
-# SiamQNetwork.seed = None
-
-# Environment parameters
-
-# stack_env.model_name='ic'
-# stack_env.base_size=[0.4375 0.4375]
-# stack_env.resolution=2**(-9)
-# stack_env.time_step=1./240
-# stack_env.num_objects=50
-# stack_env.gravity=9.8
-# stack_env.use_goal=False
-# stack_env.goal_size=None
-# stack_env.gui=False
-# stack_env.state_reward=None
-# stack_env.differential_reward=True
-stack_env.position_reward=True
-# stack_env.settle_penalty=None
-# stack_env.drop_penalty=0.
-# stack_env.reward_scale=1.
-# stack_env.seed=None
-# stack_env.dtype='float32'
-
-# Train parameters
-
-train.num_iterations = 100
-train.initial_collect_steps = 10
-# train.initial_collect_policy = None
-train.collect_steps_per_iteration = 1
-train.replay_buffer_max_length = 100
-train.batch_size = 4
-train.log_interval = 10
-train.use_time_stamp=True
-train.num_eval_episodes = 1
-train.eval_interval = 5000
-train.verbose = True
-train.exception_actions=[@exception/send_file]
-train.finally_actions=[@train/send_file, @eval/send_file]
-
-ddqn.directory='./test'
-ddqn.num_parallel_envs=1
-ddqn.learning_rate=0.00001
-ddqn.target_update_period=10000
-ddqn.save_policies=False
-ddqn.plot=False
-ddqn.log_to_file=True
+# import siamrl.utils.mail
+# send_file.user = 'amenezes.log'
+# send_file.password = 'logging332'
+# send_file.to_addrs = 'andre.menezes@tecnico.ulisboa.pt'
+# train/send_file.file = './test/train.log'
+# train/send_file.subject = 'Log'
+# exception/send_file.file = './test/train.log'
+# exception/send_file.subject = 'Exception'
+# eval/send_file.file = './test/eval.log'
+# eval/send_file.subject = 'Eval'
