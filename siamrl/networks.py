@@ -13,11 +13,6 @@ from tf_agents.specs import tensor_spec
 
 import siamrl
 
-gin.external_configurable(layers.Conv2D)
-gin.external_configurable(layers.SeparableConv2D)
-gin.external_configurable(layers.UpSampling2D)
-gin.external_configurable(layers.Flatten)
-
 DEFAULT_BRANCH_PARAMS = [
   lambda: layers.Conv2D(
     filters=32, 

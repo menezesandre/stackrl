@@ -4,7 +4,6 @@ from datetime import datetime
 import numpy as np
 
 import gin
-import gin.tf.external_configurables
 
 import tensorflow as tf
 
@@ -35,6 +34,7 @@ class Training(object):
     eval_env=None,
     net=networks.SiamQNetwork,
     optimizer=tf.keras.optimizers.Adam,
+    learning_rate=0.001,
     agent=dqn_agent.DdqnAgent,
     replay_buffer=tf_uniform_replay_buffer.TFUniformReplayBuffer,
     sample_batch_size=32,
@@ -61,7 +61,9 @@ class Training(object):
         is used.
       net: constructor for the Q network. Receives env's observation_spec
         and action_spec as arguments.
-      optimizer: constructor for the optimizer to be used.
+      optimizer: constructor for the optimizer to be used (receives 
+        learning_rate as argument).
+      learning_rate: the learning rate of the optimizer.
       agent: constructor for the agent. Receives env's time_step_spec and
         action-spec and instances of net and optimizer as arguments.
       replay_buffer: constructor for the replay buffer. Receives the 
@@ -126,7 +128,7 @@ class Training(object):
       self._env.time_step_spec(),
       self._env.action_spec(),
       self._net,
-      optimizer(),
+      optimizer(learning_rate),
       train_step_counter=common.create_variable('train_step_counter')
     )
     self._agent.initialize()
@@ -187,6 +189,7 @@ class Training(object):
 
     self._log_file = os.path.join(directory, 'train.log') if \
       log_to_file else None
+    self._train_file = os.path.join(directory, 'train.csv')
     self._eval_file = os.path.join(directory, 'eval.csv')
 
     ckpt_dir = os.path.join(directory, 'checkpoint')
@@ -249,7 +252,7 @@ class Training(object):
       # Reset the step counter
       self.step_counter = 0
       # Evaluate the agent's policy once before training.
-      self.eval(first=True)
+      self.eval()
       # Set the initial collect policy
       if policy is None:
         policy = self._agent.collect_policy
@@ -296,32 +299,29 @@ class Training(object):
         sampled_batch, _ = next(self._replay_iter)
         # Train on the sampled batch
         loss_info = self._agent.train(sampled_batch)
-        step = self._agent.train_step_counter.numpy()
 
-        if step % self._log_interval == 0:
-          self.log_iteration(Loss=loss_info.loss)
+        if self.step_counter % self._log_interval == 0:
+          self.log_iteration(loss_info.loss)
 
-        if step % self._checkpoint_interval == 0:
+        if self.step_counter % self._checkpoint_interval == 0:
           self.checkpoint()
 
-        if step % self._eval_interval == 0:
+        if self.step_counter % self._eval_interval == 0:
           self.eval()
           if self._save_weights:
             self.save()
 
-        if self._callback_interval and step % self._callback_interval==0:
+        if self._callback_interval and \
+          self.step_counter % self._callback_interval == 0 \
+        :
           self._callback()
     except:
       self.log_exception()    
     finally:
       self.checkpoint()
 
-  def eval(self, first=False):
-    """Evaluates the current policy and writes the results.
-    Args:
-      first: whether this is the first evaluation. If true,
-        a header writen on the file.
-    """
+  def eval(self):
+    """Evaluates the current policy and writes the results."""
     self.log('Running evaluation...')
     # Reset metrics
     for metric in self._eval_metrics:
@@ -331,9 +331,9 @@ class Training(object):
     # Update results
     self._eval_results = [metric.result().numpy() 
       for metric in self._eval_metrics]    
-    # If it's the first evaluation, add header
-    if first:
-      line = 'Iteration'
+    # If file is to be created, add header
+    if not os.path.isfile(self._eval_file):
+      line = 'Iter'
       for metric in self._eval_metrics:
         line += ','+metric.name
       line += '\n'
@@ -366,28 +366,48 @@ class Training(object):
       self._last_checkpoint_iter = self.step_counter
       self.log('Done.')
 
-  def log(self, line):
-    """Logs line with a time stamp"""
-    line = str(datetime.now())+': '+line+'\n'
+  def log(self, line=None, **kwargs):
+    """Logs line with a time stamp. If line is None, logs the kwargs."""
+    if line:
+      line = str(datetime.now())+': '+line+'\n'
+    else:
+      line = str(datetime.now())+': '
+      for kw in kwargs:
+        line += '{} {}\t'.format(
+          kw, 
+          kwargs[kw]
+        )
+      line = line[:-1]+'\n'
+
     if self._log_file is not None:
       with open(self._log_file, 'a') as f:
         f.write(line)
     else:
       sys.stdout.write(line)
 
-  def log_iteration(self, **kwargs):
-    line = 'Iter {}'.format(self.step_counter)
-    for kw in kwargs:
-      line += '\t{} {}'.format(
-        kw, 
-        kwargs[kw]
-      )
-    for metric in self._collect_metrics:
-      line += '\t{} {}'.format(
-        metric.name,
-        metric.result().numpy()
-      )
-    self.log(line)
+  def log_iteration(self, loss):
+    """Logs current step's loss and collect metric results."""
+    results = {metric.name: metric.result().numpy() 
+      for metric in self._collect_metrics}
+
+    # If file doesn't exist, write header
+    if not os.path.isfile(self._train_file):
+      line = 'Iter,Loss'
+      for key in results:
+        line += ','+key
+      line+='\n'
+    else:
+      line = ''
+
+    line += '{},{}'.format(self.step_counter, loss)
+    for value in results.values():
+      line += ',{}'.format(value)
+    line+='\n'
+    
+    with open(self._train_file, 'a') as f:
+      f.write(line)
+
+    self.log(Iter=self.step_counter, Loss=loss, **results)
 
   def log_exception(self):
     """Logs the last exception's traceback with a timestamp"""
