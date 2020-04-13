@@ -1,0 +1,90 @@
+# Set environment parameters
+
+# stack.register.episode_length=32
+# stack.register.urdfs='train'
+# stack.register.object_max_dimension=0.125
+# stack.register.use_gui=False
+# stack.register.sim_time_step=1/60.
+# stack.register.gravity=9.8
+# stack.register.num_sim_steps=None
+# stack.register.velocity_threshold=0.01
+# stack.register.smooth_placing = True
+# stack.register.observable_size_ratio=(46)
+# stack.register.resolution_factor=5
+# stack.register.max_z=1
+# stack.register.goal_size_ratio=1/3.
+# stack.register.occupation_ratio_weight=0.
+# stack.register.occupation_ratio_param=False
+# stack.register.positions_weight=0.
+# stack.register.positions_param=0.
+# stack.register.n_steps_weight=0.
+# stack.register.n_steps_param=0.
+# stack.register.contact_points_weight=0.
+# stack.register.contact_points_param=0.
+# stack.register.differential=True
+# stack.register.flat_action=True
+# stack.register.dtype='float32'
+# stack.register.seed=None
+
+# stack.curriculum.goals = []
+# stack.ckwargs = {}
+
+# Set network parameters
+
+# SiamQNetwork.left_params = []
+# SiamQNetwork.right_params = None
+# SiamQNetwork.pseudo = True
+# SiamQNetwork.pos_params = []
+# SiamQNetwork.seed = None
+
+# Set optimizer parameters
+
+# tf.keras.optimizers.schedules.ExponentialDecay.initial_learning_rate = 0.001
+# tf.keras.optimizers.schedules.ExponentialDecay.decay_steps = 100000
+# tf.keras.optimizers.schedules.ExponentialDecay.decay_rate = 0.1
+# tf.keras.optimizers.schedules.ExponentialDecay.staircase = False
+# tf.keras.optimizers.Adam.learning_rate = @tf.keras.optimizers.schedules.ExponentialDecay()
+
+# tf.keras.optimizers.Adam.learning_rate = 0.001
+# tf.keras.optimizers.Adam.beta_1 = 0.9
+# tf.keras.optimizers.Adam.beta_2 = 0.999
+# tf.keras.optimizers.Adam.epsilon = 0.0000001
+# tf.keras.optimizers.Adam.amsgrad = False
+
+# Set agent parameters
+
+# DdqnAgent.epsilon_greedy = 0.1
+# DdqnAgent.target_update_period = 10000
+
+# Set replay buffer parameters
+
+# TFUniformReplayBuffer.max_length = 8000
+
+# Set training parameters
+
+# Training.num_parallel_envs = 1
+# Training.eval_env = None
+# Training.net = @SiamQNetwork
+# Training.optimizer = @tf.keras.optimizers.Adam
+# Training.agent = @DdqnAgent
+# Training.replay_buffer = @TFUniformReplayBuffer
+# Training.sample_batch_size = 32
+# Training.collect_metrics = []
+# Training.collect_metrics_buffer_length = 10
+# Training.collect_steps_per_iteration = 1
+# Training.eval_metrics = []
+# Training.num_eval_episodes = 1
+# Training.directory = '.'
+# Training.save_evaluated_policies = False
+# Training.log_to_file = True
+# Training.log_interval = 100
+# Training.eval_interval = 10000
+# Training.checkpoint_interval = 10000
+
+# Training.initialize.num_steps = 2048
+# Training.initialize.policy = None
+
+# CurriculumTraining.eval_env = None
+# CurriculumTraining.collect_metrics = []
+# CurriculumTraining.directory = '.'
+# CurriculumTraining.check_interval = 96

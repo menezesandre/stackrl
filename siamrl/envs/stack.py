@@ -958,6 +958,9 @@ def curriculum(goals=[], ckwargs={}, **kwargs):
       argument for each environment.
     kwargs: constant keyword aguments (for all environments
       registered).
+  Returns:
+    Dictionary with registered environment ids as keys and 
+      respective goals as values.
   """
   ids = {}
   # Turn dict of lists to list of dicts

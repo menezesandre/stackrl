@@ -34,14 +34,13 @@ class Training(object):
     eval_env=None,
     net=networks.SiamQNetwork,
     optimizer=tf.keras.optimizers.Adam,
-    learning_rate=0.001,
     agent=dqn_agent.DdqnAgent,
     replay_buffer=tf_uniform_replay_buffer.TFUniformReplayBuffer,
     sample_batch_size=32,
     collect_metrics=[],
     collect_metrics_buffer_length=10,
     collect_steps_per_iteration=1,
-    eval_metrics=[tf_metrics.AverageReturnMetric],
+    eval_metrics=[],
     num_eval_episodes=1,
     directory='.',
     save_evaluated_policies=False,
@@ -61,9 +60,7 @@ class Training(object):
         is used.
       net: constructor for the Q network. Receives env's observation_spec
         and action_spec as arguments.
-      optimizer: constructor for the optimizer to be used (receives 
-        learning_rate as argument).
-      learning_rate: the learning rate of the optimizer.
+      optimizer: constructor for the optimizer to be used by agent.
       agent: constructor for the agent. Receives env's time_step_spec and
         action-spec and instances of net and optimizer as arguments.
       replay_buffer: constructor for the replay buffer. Receives the 
@@ -128,7 +125,8 @@ class Training(object):
       self._env.time_step_spec(),
       self._env.action_spec(),
       self._net,
-      optimizer(learning_rate),
+      optimizer(),
+
       train_step_counter=common.create_variable('train_step_counter')
     )
     self._agent.initialize()
@@ -165,6 +163,8 @@ class Training(object):
       num_steps=collect_steps_per_iteration
     )
 
+    if not eval_metrics:
+      eval_metrics.append(tf_metrics.AverageReturnMetric)
     self._eval_metrics = []
     for metric in eval_metrics:
       try:
@@ -174,7 +174,6 @@ class Training(object):
         ))
       except TypeError:
         self._eval_metrics.append(metric())
-    self._eval_results = [None]*len(self._eval_metrics)
 
     self._eval_driver = dynamic_episode_driver.DynamicEpisodeDriver(
       self._eval_env,
@@ -234,7 +233,7 @@ class Training(object):
   def step_counter(self, value):
     self._agent.train_step_counter.assign(value)
 
-  @gin.configurable
+  @gin.configurable(module='siamrl.train.Training')
   def initialize(
     self,
     num_steps=2048, 
@@ -328,9 +327,6 @@ class Training(object):
       metric.reset()
     # Run evaluation
     self._eval_driver.run()
-    # Update results
-    self._eval_results = [metric.result().numpy() 
-      for metric in self._eval_metrics]    
     # If file is to be created, add header
     if not os.path.isfile(self._eval_file):
       line = 'Iter'
@@ -341,8 +337,8 @@ class Training(object):
       line = ''
     # Add iteration number and results
     line += str(self.step_counter)
-    for result in self._eval_results:
-      line += ','+str(result)
+    for metric in self._eval_metrics:
+      line += ','+str(metric.result().numpy())
     line += '\n'
     # Write to file
     with open(self._eval_file, 'a') as f:
