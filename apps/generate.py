@@ -70,3 +70,4 @@ if __name__=='__main__':
   seed_test = seed if seed is None else seed+1
   generator.from_icosphere(n=n_train, directory=directory, name='train', seed=seed)
   generator.from_icosphere(n=n_test, directory=directory, name='test', seed=seed_test)
+  

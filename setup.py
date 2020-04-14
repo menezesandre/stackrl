@@ -24,7 +24,7 @@ except:
 
 setup(
   name='siamrl',
-  version='2.0.dev0412',
+  version='2.0.dev0413',
   description='', #TODO
   long_description=long_description,
   long_description_content_type='text/markdown',
@@ -40,20 +40,22 @@ setup(
 
 # Install apps
 for fname in glob.glob('apps/*.py'):
-  # Add shebang if necessary
-  with open(fname,'r+') as f:
+  # Interpreter is the program executing this instalation
+  shebang = '#!'+sys.executable+'\n'
+  with open(fname,'r') as f:
     lines = f.readlines()
-    # Interpreter is the program executing this instalation
-    interpreter = '#!'+sys.executable+'\n'
-    write_interpreter = True
-    if lines[0] == interpreter:
-      write_interpreter = False
-    elif lines[0].startswith('#!'):
-      lines[0] = '#!'+sys.executable+'\n'
+    # Check if shebang is correct
+    if lines[0] == shebang:
+      write = False
     else:
-      lines.insert(0,'#!'+sys.executable+'\n')
-    if write_interpreter:
-      f.seek(0)
+      write = True
+  # Overwrite file if necessary
+  if write:
+    if lines[0].startswith('#!'):
+      lines[0] = shebang
+    else:
+      lines.insert(0,shebang)
+    with open(fname, 'w') as f:
       for line in lines:
         f.write(line)
   # Add execute permission to those who have read permission

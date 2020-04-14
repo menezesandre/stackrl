@@ -627,6 +627,10 @@ class StackEnv(gym.Env):
     'dtypes': ['uint8', 'uint16', 'uint32', 'uint64', 'float16', 'float32', 'float64'],
     'render.modes': ['human', 'rgb_array']
   }
+  _seeds = []
+  @staticmethod
+  def _clear_seeds():
+    StackEnv._seeds = []
 
   def __init__(self,
     episode_length=DEFAULT_EPISODE_LENGTH,
@@ -653,7 +657,8 @@ class StackEnv(gym.Env):
     differential=True,
     flat_action=True,
     dtype='float32',
-    seed=None
+    seed=None,
+    allow_same_seed=True
   ):
     """
     Args:
@@ -662,27 +667,35 @@ class StackEnv(gym.Env):
       urdfs: list of files (urdf format) that describe the objects to be 
         used on the environment. A name string can be provided to use 
         objects from the 'siamrl/envs/data/generated' directory. On each 
-        episode, a fixed number of files is randomly choosen from this list.
+        episode, a fixed number of files is randomly choosen from this 
+        list.
       object_max_dimension: maximum dimension of all objects in the list.
         All objects should be completely visible within a square with this
         value as side length.
       use_gui: whether to use physics engine gafical interface. 
-      sim_time_step, gravity, num_sim_steps, velocity_threshold, smooth_placing:
-        see Simulator.
+      sim_time_step, gravity, num_sim_steps, velocity_threshold, 
+        smooth_placing: see Simulator.
       observable_size_ratio: size of the observable space as a multiple of
-        object_max_dimension. Either a scalar for square space or a list with
-        [height, width] (as seen in the observation).
-      resolution_factor: resolution is such that the number of pixels along
-        object_max_dimensions is two to the power of this factor.
+        object_max_dimension. Either a scalar for square space or a list 
+        with [height, width] (as seen in the observation).
+      resolution_factor: resolution is such that the number of pixels 
+        along object_max_dimensions is two to the power of this factor.
       goal_size_ratio, occupation_ratio_weight, occupation_ratio_param,
         positions_weight, positions_param, n_steps_weight, n_steps_param,
         contact_points_weight, contact_points_param, differential: see 
         Rewarder.
       flat_action: whether to receive action as a flat index or a pair of
         indexes [h, w].
-      dtype: data type of the returned observation. Must be one of 'uint8',
-        float16', 'float32' or 'float64'. Internaly, float32 is used.
+      dtype: data type of the returned observation. Must be one of 
+        'uint8', 'uint16', 'uint32', 'float16', 'float32' or 'float64'. 
+        Internaly, float32 is used.
       seed: Seed for the env's random number generator.
+      allow_same_seed: if false, seed used in each instantiation is 
+        stored in a class level list (_seeds). Seed used in this instance
+        is incremented until it doesn't match any of the previously used 
+        seeds. This is useful when using a seed while instantiating 
+        parallel environments (so that parallel observations aren't all 
+        the same).
     """
     self._length = episode_length
     # Set the files list
@@ -697,6 +710,14 @@ class StackEnv(gym.Env):
     self._replace = len(self._list) < self._length
 
     # Set the random number generator
+    if not (seed is None or allow_same_seed):
+      while seed in StackEnv._seeds:
+        seed = (seed + 1) % 2**32
+      StackEnv._seeds.append(seed)
+      self._instantiation_seed = seed
+    else: 
+      self._instantiation_seed = seed
+
     self._random, seed = seeding.np_random(seed)
 
     # Used only when render is called in human mode.
@@ -806,6 +827,11 @@ class StackEnv(gym.Env):
     self._done = True
 
   def __del__(self):
+    if self._instantiation_seed is not None:
+      try:
+        StackEnv._seeds.remove(self._instantiation_seed)
+      except ValueError:
+        pass
     self.close()
 
   @property
