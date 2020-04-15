@@ -7,6 +7,12 @@ import gin
 
 import tensorflow as tf
 
+for device in tf.config.experimental.list_physical_devices('GPU'):
+  try: 
+    tf.config.experimental.set_memory_growth(device, True) 
+  except: 
+    pass
+
 import tf_agents
 from tf_agents.agents.dqn import dqn_agent
 from tf_agents.drivers import dynamic_step_driver
@@ -541,7 +547,7 @@ class CurriculumTraining(Training):
     Raises:
       StopIteration: when curriculum is finished.
     """
-    env_id, self._current_goal = next(self._curriculum)
+    env_id, self._current_goal = self._curriculum.pop()
 
     self.log('Updating environment...')
     if self._env.batch_size > 1:
@@ -590,7 +596,7 @@ class CurriculumTraining(Training):
 
   def _callback(self):
     result = self._goal_metric.result()
-    if result >= self._current_goal*self._epsilon:
+    if result >= self._current_goal*(1-self._epsilon):
       if not self._complete:
         self.log('Goal return achieved.')
         with open(self._curriculum_file, 'a') as f:
