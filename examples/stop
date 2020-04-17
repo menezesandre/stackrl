@@ -1,0 +1,14 @@
+#!/bin/bash
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -n "$1" ]; then
+  FILE=""$SOURCE_DIR"/.cid_"$1""
+  eval "docker kill -s=SIGINT $(< "$FILE")"
+  rm "$FILE"
+else
+  for FILE in "$SOURCE_DIR"/.cid_*; do
+    eval "docker kill -s=SIGINT $(< "$FILE")"
+    rm "$FILE"
+  done
+  eval "$SOURCE_DIR/.log.sh stop"
+fi
+

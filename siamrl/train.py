@@ -1,4 +1,4 @@
-import sys, os, traceback
+import sys, os, traceback, time
 from datetime import datetime
 
 import numpy as np
@@ -242,13 +242,14 @@ class Training(object):
   @gin.configurable(module='siamrl.train.Training')
   def initialize(
     self,
-    num_steps=2048, 
+    num_steps=None, 
     policy=random_tf_policy.RandomTFPolicy
   ):
     """Checks if a checkpoint exists and if it doesn't performs initial
       evaluation and collect.
     Args:
-      num_steps: Number of steps for the initial experience collect.
+      num_steps: Number of steps for the initial experience collect. 
+        If None, the replay buffer is filled to its max capacity.
       policy: policy to use on the initial collect. If None, agent's 
         collect policy is used.
     """
@@ -276,6 +277,7 @@ class Training(object):
             )
           )
       # Collect transitions
+      num_steps = num_steps or self._replay_buffer._max_length
       initial_collect_driver = dynamic_step_driver.DynamicStepDriver(
         self._env,
         policy, 
@@ -297,27 +299,40 @@ class Training(object):
     if not self._initialized:
       self.initialize()
     try:
+      tc = 0
+      tt = 0
       for _ in range(max_num_iterations):
         # Colect experience
+        tc -= time.perf_counter()
         self._collect_driver.run()
+        tc += time.perf_counter()
         # Sample a batch from the replay buffer
         sampled_batch, _ = next(self._replay_iter)
         # Train on the sampled batch
+        tt -= time.perf_counter()
         loss_info = self._agent.train(sampled_batch)
+        tt += time.perf_counter()
+        step = self.step_counter
 
-        if self.step_counter % self._log_interval == 0:
-          self.log_iteration(loss_info.loss)
+        if step % self._log_interval == 0:
+          self.log_iteration(
+            loss_info.loss, 
+            tc/self._log_interval, 
+            tt/self._log_interval
+          )
+          tc = 0
+          tt = 0
 
-        if self.step_counter % self._checkpoint_interval == 0:
+        if step % self._checkpoint_interval == 0:
           self.checkpoint()
 
-        if self.step_counter % self._eval_interval == 0:
+        if step % self._eval_interval == 0:
           self.eval()
           if self._save_weights:
             self.save()
 
         if self._callback_interval and \
-          self.step_counter % self._callback_interval == 0 \
+          step % self._callback_interval == 0 \
         :
           self._callback()
     except:
@@ -387,21 +402,25 @@ class Training(object):
     else:
       sys.stdout.write(line)
 
-  def log_iteration(self, loss):
+  def log_iteration(self, loss, collect_time, train_time):
     """Logs current step's loss and collect metric results."""
     results = {metric.name: metric.result().numpy() 
       for metric in self._collect_metrics}
 
     # If file doesn't exist, write header
     if not os.path.isfile(self._train_file):
-      line = 'Iter,Loss'
+      line = 'Iter,Loss,CollectTime,TrainTime'
       for key in results:
         line += ','+key
       line+='\n'
     else:
       line = ''
 
-    line += '{},{}'.format(self.step_counter, loss)
+    line += '{},{},{},{}'.format(
+      self.step_counter, 
+      loss, 
+      collect_time, 
+      train_time)
     for value in results.values():
       line += ',{}'.format(value)
     line+='\n'
@@ -480,11 +499,16 @@ class CurriculumTraining(Training):
         skiprows=1,
         unpack=True
       )
-      for i, g in zip(end_iter, goal):
+      if np.isscalar(goal):
         env_id, self._current_goal = self._curriculum.pop()
-        if self._current_goal != g:
+        if self._current_goal != goal:
           self._curriculum.append((env_id, self._current_goal))
-          break
+      else:
+        for g in goal:
+          env_id, self._current_goal = self._curriculum.pop()
+          if self._current_goal != g:
+            self._curriculum.append((env_id, self._current_goal))
+            break
       if len(self._curriculum) == 0:
         self._complete = True
       else:
@@ -518,12 +542,6 @@ class CurriculumTraining(Training):
   @property
   def _epsilon(self):
     return self._agent.collect_policy._get_epsilon()
-
-  def initialize(self, **kwargs):
-    super(CurriculumTraining, self).initialize(**kwargs)
-    if not os.path.isfile(self._curriculum_file):
-      with open(self._curriculum_file, 'w') as f:
-        f.write('EndIter,Goal\n')
 
   def run(
     self,
@@ -599,8 +617,13 @@ class CurriculumTraining(Training):
     if result >= self._current_goal*(1-self._epsilon):
       if not self._complete:
         self.log('Goal return achieved.')
-        with open(self._curriculum_file, 'a') as f:
-          f.write('{},{}\n'.format(self.step_counter, self._current_goal))
+        if not os.path.isfile(self._curriculum_file):
+          with open(self._curriculum_file, 'w') as f:
+            f.write('EndIter,Goal\n')
+            f.write('{},{}\n'.format(self.step_counter, self._current_goal))
+        else:
+          with open(self._curriculum_file, 'a') as f:
+            f.write('{},{}\n'.format(self.step_counter, self._current_goal))
         try:
           self._update_environment()
         except StopIteration:

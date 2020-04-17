@@ -1,0 +1,46 @@
+#!/bin/bash
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+while [ -n "$1" ]; do
+  case "$1" in
+    --gpu)
+      GPU="$2"
+      shift
+      ;;
+    -c) CURRICULUM="--curriculum" ;;
+    -l) eval "$SOURCE_DIR/.log.sh &" ;;
+    -*) echo "Option $1 not recognized" ;;
+    *) DIR="$1" ;;
+  esac
+  shift
+done
+
+if [ -n "$DIR" ]; then
+  CID="$SOURCE_DIR/.cid_$DIR"
+  DIR="$SOURCE_DIR/$DIR"
+else
+  CID="$SOURCE_DIR/.cid_test"
+  DIR="$SOURCE_DIR/test"
+fi
+
+if [ ! -d "$DIR" ]; then
+  mkdir "$DIR"
+  cp "$SOURCE_DIR/config.gin" "$DIR/config.gin"
+  eval "nano $DIR/config.gin"
+fi
+
+if [[ "$(docker version --format '{{.Server.Version}}')" > "19.03" ]]; then
+  if [ -n "$GPU" ]; then
+    GPU="--gpus=$GPU"
+  else
+    GPU="--gpus=all"
+  fi
+else
+  if [ -n "$GPU" ]; then
+    GPU="--runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=$GPU"
+  else
+    GPU="--runtime=nvidia"
+  fi
+fi
+
+eval "docker run $GPU -d --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/siamrl train -d ./tmp $CURRICULUM > $CID"
