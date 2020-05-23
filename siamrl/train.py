@@ -25,6 +25,7 @@ class Training(object):
     log_interval=100,
     eval_interval=10000,
     checkpoint_interval=10000,
+    memory_growth=True,
     seed=None
   ):
     """
@@ -51,6 +52,17 @@ class Training(object):
         explicitly passed as seed to the components, overriding any 
         default/configuration.)
     """
+    try:
+      devices = tf.config.list_physical_devices('GPU')
+    except AttributeError:
+      # list_physical_devices is under experimental for tensorflow-2.0.0 
+      devices = tf.config.experimental.list_physical_devices('GPU')
+    for device in devices:
+      try: 
+        tf.config.experimental.set_memory_growth(device, memory_growth) 
+      except RuntimeError: 
+        self.log("Couldn't set memory growth to {} for device {}. Already initialized.".format(memory_growth, device))
+
     # Set seeder.
     if seed is not None:
       random.seed(seed)

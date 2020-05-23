@@ -22,7 +22,7 @@ except:
 
 setup(
   name='siamrl',
-  version='2.0.a0',
+  version='2.0.a0523',
   description='', #TODO
   long_description=long_description,
   long_description_content_type='text/markdown',

@@ -41,56 +41,47 @@ class ReplayMemory(tf.Module):
       name: name of this module.
     """
     super(ReplayMemory, self).__init__(name=name)
-    # Set number of partitions as the number of transitions expected to
-    # be received by add. This is given by state_spec's batch dimension
-    n_parts = tf.nest.flatten(state_spec)[0].shape[0]
-    # Make max_length divisible by num_partitions
-    max_length -= max_length % n_parts
-    # Set maximum partition length
-    self._max_length = tf.constant(max_length//n_parts, dtype=tf.int32)
-    # Set partitions' offsets (shaped to match what is expected by arg
-    # indexes of tf.Variable.scatter_nd_update)
-    self._offsets = tf.expand_dims(
-      tf.range(n_parts, dtype=tf.int32)*self._max_length,
-      -1
-    )
-    # Set tensor with correct shape to assign logits to added samples.
-    self._new_logits = -inf*tf.ones(n_parts, dtype=tf.float32)
-    # Set prioritization and bias compensation
-    self._alpha = tf.constant(alpha or 0., dtype=tf.float32)
-    self._beta = tf.constant(beta or 1., dtype=tf.float32)
-    # Set length of returned transitions
-    self._n_steps = tf.constant(n_steps or 1, dtype=tf.int32)
-    self._n_steps_range = tf.squeeze(tf.range(1,self._n_steps+1, dtype=tf.int32))
-    # Assert memory is large enough
-    assert self._max_length > self._n_steps
-    # Set local seed for random sampling
-    self._seed = seed
-    # Set storage
-    self._states = tf.nest.map_structure(
-      lambda x: tf.Variable(tf.zeros((max_length)+x.shape[1:], dtype=x.dtype),name='states'), 
-      state_spec
-    )
-    self._rewards = tf.Variable(tf.zeros(max_length, dtype=tf.float32), name='rewards')
-    self._terminal = tf.Variable(tf.zeros(max_length, dtype=tf.bool), name='terminal')
-    self._actions = tf.Variable(tf.zeros(max_length, dtype=tf.int64), name='actions')
-    self._logits = tf.Variable(-inf*tf.ones(max_length, dtype=tf.float32), name='sample')
-    # Set internal variables 
-    self._insert_index = tf.Variable(0, dtype=tf.int32)
-    self._max_logit = tf.Variable(0., dtype=tf.float32)
-    self._max_logit_index = tf.Variable(0, dtype=tf.int32) 
-    self._min_logit = tf.Variable(0., dtype=tf.float32)
-    self._min_logit_index = tf.Variable(0, dtype=tf.int32) 
-
-  def __del__(self):
-    for i in tf.nest.flatten(self._states):
-      del(i)
-    del(
-      self._rewards, 
-      self._terminal, 
-      self._actions, 
-      self._logits
-    )
+    with tf.device('CPU'):
+      # Set number of partitions as the number of transitions expected to
+      # be received by add. This is given by state_spec's batch dimension
+      n_parts = tf.nest.flatten(state_spec)[0].shape[0]
+      # Make max_length divisible by num_partitions
+      max_length -= max_length % n_parts
+      # Set maximum partition length
+      self._max_length = tf.constant(max_length//n_parts, dtype=tf.int32)
+      # Set partitions' offsets (shaped to match what is expected by arg
+      # indexes of tf.Variable.scatter_nd_update)
+      self._offsets = tf.expand_dims(
+        tf.range(n_parts, dtype=tf.int32)*self._max_length,
+        -1
+      )
+      # Set tensor with correct shape to assign logits to added samples.
+      self._new_logits = -inf*tf.ones(n_parts, dtype=tf.float32)
+      # Set prioritization and bias compensation
+      self._alpha = tf.constant(alpha or 0., dtype=tf.float32)
+      self._beta = tf.constant(beta or 1., dtype=tf.float32)
+      # Set length of returned transitions
+      self._n_steps = tf.constant(n_steps or 1, dtype=tf.int32)
+      self._n_steps_range = tf.squeeze(tf.range(1,self._n_steps+1, dtype=tf.int32))
+      # Assert memory is large enough
+      assert self._max_length > self._n_steps
+      # Set local seed for random sampling
+      self._seed = seed
+      # Set storage
+      self._states = tf.nest.map_structure(
+        lambda x: tf.Variable(tf.zeros((max_length)+x.shape[1:], dtype=x.dtype),name='states'), 
+        state_spec
+      )
+      self._rewards = tf.Variable(tf.zeros(max_length, dtype=tf.float32), name='rewards')
+      self._terminal = tf.Variable(tf.zeros(max_length, dtype=tf.bool), name='terminal')
+      self._actions = tf.Variable(tf.zeros(max_length, dtype=tf.int64), name='actions')
+      self._logits = tf.Variable(-inf*tf.ones(max_length, dtype=tf.float32), name='sample')
+      # Set internal variables 
+      self._insert_index = tf.Variable(0, dtype=tf.int32)
+      self._max_logit = tf.Variable(0., dtype=tf.float32)
+      self._max_logit_index = tf.Variable(0, dtype=tf.int32) 
+      self._min_logit = tf.Variable(0., dtype=tf.float32)
+      self._min_logit_index = tf.Variable(0, dtype=tf.int32) 
 
   def __len__(self):
     """Returns the number of elements that can be sampled from this 
