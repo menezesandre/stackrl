@@ -9,6 +9,7 @@ while [ -n "$1" ]; do
       ;;
     -c) CURRICULUM="--curriculum" ;;
     -l) eval "$SOURCE_DIR/.log.sh &" ;;
+    -i) MODE="-it";;
     -*) echo "Option $1 not recognized" ;;
     *) DIR="$1" ;;
   esac
@@ -21,6 +22,11 @@ if [ -n "$DIR" ]; then
 else
   CID="$SOURCE_DIR/.cid_test"
   DIR="$SOURCE_DIR/test"
+fi
+
+if [ -z "$MODE" ]; then
+  MODE="-d"
+  REDIRECT="> $CID"
 fi
 
 if [ ! -d "$DIR" ]; then
@@ -43,4 +49,4 @@ else
   fi
 fi
 
-eval "docker run $GPU -d --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/siamrl train -d ./tmp $CURRICULUM > $CID"
+eval "docker run $GPU -d --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/siamrl train -d ./tmp $CURRICULUM $REDIRECT"

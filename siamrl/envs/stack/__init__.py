@@ -1,0 +1,1 @@
+from siamrl.envs.stack.env import register, curriculum

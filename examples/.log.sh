@@ -2,6 +2,7 @@
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIR="$SOURCE_DIR/.log"
 GPU="$DIR/gpu.csv"
+CPU="$DIR/cpu.csv"
 RUNNING="$DIR/.running"
 
 while [ -n "$1" ]; do
@@ -37,11 +38,16 @@ if [ ! -f "$GPU" ]; then
   eval "nvidia-smi --query-gpu=timestamp,index,fan.speed,pstate,clocks_throttle_reasons.active,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,clocks.gr,clocks.sm,clocks.mem --format=csv > $GPU"
 fi
 
+if [ ! -f "$CPU" ]; then
+  echo "timestamp,"$(free | sed -n '1p' | awk '{print $1","$2","$3","$4","$5","$6}')""$(sensors -u | sed -n 's/ *\(.*\)_input: \([0123456789.]* *$\)/\1,/p') > "$CPU"
+fi
+
 if [ -z "$SLEEP" ]; then
   SLEEP="1"
 fi
 
 while [ -f "$RUNNING" ]; do
   sleep "$SLEEP"
-  eval "nvidia-smi --query-gpu=timestamp,index,fan.speed,pstate,clocks_throttle_reasons.active,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,clocks.gr,clocks.sm,clocks.mem --format=csv,noheader >> $GPU"
+  echo "$(nvidia-smi --query-gpu=timestamp,index,fan.speed,pstate,clocks_throttle_reasons.active,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,clocks.gr,clocks.sm,clocks.mem --format=csv,noheader)" >> "$GPU"
+  echo "$(date +"%Y/%m/%d %T"),"$(sensors -u | sed -n 's/ *\(.*\)_input: \([0123456789.]* *\)/\2,/p')"$(free | sed -n '2p' | awk '{print $2","$3","$4","$5","$6","$7}')" >> "$CPU"
 done

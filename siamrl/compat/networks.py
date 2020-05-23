@@ -30,15 +30,22 @@ DEFAULT_BRANCH_PARAMS = [
     padding='same',
     kernel_initializer='he_uniform'
   ),
-  lambda: layers.UpSampling2D( 
+  lambda: layers.Conv2D(
+    filters=64, 
+    kernel_size=3,
+    activation='relu', 
+    padding='same',
+    kernel_initializer='he_uniform'
+  ),
+  lambda: layers.UpSampling2D(
     size=4,
     interpolation='bilinear'
   )  
 ]
 DEFAULT_POS_PARAMS = [
   lambda: layers.Conv2D(
-    filters=32, 
-    kernel_size=5,
+    filters=160, 
+    kernel_size=13,
     activation='relu', 
     padding='same',
     kernel_initializer='he_uniform'

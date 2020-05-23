@@ -2,76 +2,98 @@
 Baseline policies with no learning, using 
   OpenCV's Template Matching
 """
-try:
-  import cv2 as cv
-except ImportError:
-  raise ImportError("""
-  Package 'cv2' is necessary to run baselines module.
-  Install using 'pip install opencv-python'"""
-  )
-
-import tf_agents
-from tf_agents.policies import py_policy
-from tf_agents.trajectories import policy_step
-
 import numpy as np
 
-__all__=['CCoeffPolicy', 'GradCorrPolicy']
+def _trimmed_goal(observation):
+  shape = observation[1].shape
+  top = shape[0]//2 + 1
+  bottom = shape[0] - top - 1
+  left = shape[1]//2 + 1
+  right = shape[1] - left - 1
+  return observation[0][top:-bottom, left:-right,1]
 
-class Base(py_policy.Base):
-  """
-  Base class that implements the common initialization
-  """
-  methods = [] # to be overridden 
-  def __init__(self, time_step_spec, action_spec,
-      normed=True):
-    assert len(time_step_spec.observation)==2
-    assert time_step_spec.observation[0].shape[2] == time_step_spec.observation[1].shape[2]
-    assert action_spec.shape in [(), (2,)]
-    super(Base, self).__init__(time_step_spec, action_spec)
-    self._method = self.methods[normed]
-    self._unravel = self.action_spec.shape==(2,)
+def random(observation, flat=True):
+  return np.random.rand(
+    observation[0].shape[0]-observation[1].shape[0],
+    observation[0].shape[1]-observation[1].shape[1]
+  )
 
-class CCoeffPolicy(Base):
-  methods = [cv.TM_CCOEFF, cv.TM_CCOEFF_NORMED]
+try:
+  import cv2 as cv
 
-  def _action(self, time_step, policy_state):
-    img = time_step.observation[0]
-    tmp = time_step.observation[1]
-    # this may be necessary because the CCOEFF takes the "empty" 
-    # pixels into acount when mean centering
-    """
-    not_empty_count = np.sum(tmp!=0)
-    if not_empty_count != 0:
-      mean = np.sum(tmp)/not_empty_count
-      tmp -= np.where(tmp!=0,mean,0)
-    """
-    c = cv.matchTemplate(img, tmp, self._method)
-    action = np.argmin(c)
-    if self._unravel:
-      action = np.array(np.unravel_index(action, c.shape))
-    
-    return policy_step.PolicyStep(action=action,state=policy_state)
+  def ccoeff(observation, normed=True):
+    img = observation[0][:,:,0]
+    tmp = observation[1][:,:,0]
+    return -cv.matchTemplate(
+      img, 
+      tmp, 
+      cv.TM_CCOEFF_NORMED if normed else cv.TM_CCOEFF
+    )
 
-class GradCorrPolicy(Base):
-  methods = [cv.TM_CCORR, cv.TM_CCORR_NORMED]
+  def gradcorr(observation, normed=True):
+    img = observation[0][:,:,0]
+    tmp = observation[1][:,:,0]
 
-  def _action(self, time_step, policy_state):
-    img = time_step.observation[0]
-    tmp = -time_step.observation[1]
-    depth = cv.CV_32F if img.dtype=='float32' else cv.CV_64F
-
-    img_x = cv.Sobel(img, depth, 1, 0)
-    img_y = cv.Sobel(img, depth, 0, 1)
-    tmp_x = cv.Sobel(tmp, depth, 1, 0)
-    tmp_y = cv.Sobel(tmp, depth, 0, 1)
+    img_x = cv.Sobel(img, cv.CV_32F, 1, 0)
+    img_y = cv.Sobel(img, cv.CV_32F, 0, 1)
+    tmp_x = cv.Sobel(tmp, cv.CV_32F, 1, 0)
+    tmp_y = cv.Sobel(tmp, cv.CV_32F, 0, 1)
 
     img = cv.merge([img_x, img_y])
     tmp = cv.merge([tmp_x, tmp_y])
     
-    c = cv.matchTemplate(img, tmp, self._method)
-    action = np.argmax(c)
-    if self._unravel:
-      action = np.array(np.unravel_index(action, c.shape))
-    
-    return policy_step.PolicyStep(action=action,state=policy_state)
+    return -cv.matchTemplate(
+      img, 
+      tmp, 
+      cv.TM_CCORR_NORMED if normed else cv.TM_CCORR
+    )
+  
+except ImportError:
+  ccoeff = None
+  gradcorr = None
+
+methods = {
+  'random': random,
+  'ccoeff': ccoeff,
+  'gradcorr': gradcorr
+}
+
+class Baseline(object):
+  def __init__(self, method='random', flat=True, goal=True, **kwargs):
+    if isinstance(method, str):
+      method = method.lower()
+      if method in methods:
+        self._value = methods[method]
+        if self._value is None:
+          raise ImportError(
+            "opencv-python must be installed to use {} method.".format(
+              method
+            )
+          )
+      else:
+        raise ValueError(
+          "Invalid value {} for argument method.".format(method)
+        )
+    elif callable(method):
+      self._value = method
+    else:
+      raise TypeError(
+        "Invalid type {} for argument method.".format(type(method))
+      )
+    self._flat = bool(flat)
+    self._goal = bool(goal)
+    self._kwargs = kwargs
+
+  def __call__(self, inputs):
+    value = self._value(inputs, **self._kwargs)
+    if self._goal:
+      goal = _trimmed_goal(inputs)
+      value = np.where(
+        goal > 0.,
+        value,
+        -np.inf
+      )
+    best = np.argmax(value)
+    if not self._flat:
+      best = np.array(np.unravel_index(best, value.shape))
+    return best

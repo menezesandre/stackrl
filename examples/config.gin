@@ -24,19 +24,48 @@
 # stack.register.differential=True
 # stack.register.flat_action=True
 # stack.register.dtype='float32'
-# stack.register.seed=None
-# stack.register.allow_same_seed=True
 
 # stack.curriculum.goals = []
 # stack.ckwargs = {}
 
 # Set network parameters
 
-# SiamQNetwork.left_params = []
-# SiamQNetwork.right_params = None
-# SiamQNetwork.pseudo = True
-# SiamQNetwork.pos_params = []
-# SiamQNetwork.seed = None
+# left/nets.sequential.layers = [
+#   (@tf.keras.layers.Conv2D,
+#     {'filters':32, 'kernel_size':8, 'strides':4, 'activation':'relu', 
+#     'padding':'same'}),
+#   (@tf.keras.layers.Conv2D,
+#     {'filters':64, 'kernel_size':4, 'dilation_rate':2, 
+#     'activation':'relu', 'padding':'same'}),
+#   (@tf.keras.layers.Conv2D,
+#     {'filters':64, 'kernel_size':3, 'activation':'relu', 
+#     'padding':'same'}),
+#   (@tf.keras.layers.UpSampling2D, {'size':4, 'interpolation':'bilinear'})
+# ]
+# right/nets.sequential.layers = [
+#   (@tf.keras.layers.Conv2D,
+#     {'filters':32, 'kernel_size':8, 'strides':4, 'activation':'relu', 
+#     'padding':'same'}),
+#   (@tf.keras.layers.Conv2D,
+#     {'filters':64, 'kernel_size':4, 'dilation_rate':2, 
+#     'activation':'relu', 'padding':'same'}),
+#   (@tf.keras.layers.Conv2D,
+#     {'filters':64, 'kernel_size':3, 'activation':'relu', 
+#     'padding':'same'}),
+#   (@tf.keras.layers.UpSampling2D, {'size':4, 'interpolation':'bilinear'})
+# ]
+# pos/nets.sequential.layers = [
+#   (@tf.keras.layers.Conv2D, 
+#     {'filters':160, 'kernel_size':13, 'activation':'relu', 
+#     'padding':'same'}),
+#   (@tf.keras.layers.Conv2D,
+#     {'filters':1, 'kernel_size':1, 'padding':'same'}),
+#   (@tf.keras.layers.Flatten, {})
+# ]  
+
+# nets.PseudoSiamFCN.left_layers = @left/nets.sequential
+# nets.PseudoSiamFCN.right_layers = @right/nets.sequential
+# nets.PseudoSiamFCN.pos_layers = @pos/nets.sequential
 
 # Set optimizer parameters
 
@@ -54,38 +83,40 @@
 
 # Set agent parameters
 
-# DdqnAgent.epsilon_greedy = 0.1
-# DdqnAgent.target_update_period = 10000
-
-# Set replay buffer parameters
-
-# TFUniformReplayBuffer.max_length = 8000
+# agents.DQN.optimizer='adam'
+# agents.DQN.learning_rate=None
+# agents.DQN.huber_delta=1.
+# agents.DQN.minibatch_size=32
+# agents.DQN.replay_memory_size=100000
+# agents.DQN.target_update_period=10000
+# agents.DQN.discount_factor=1.
+# agents.DQN.collect_batch_size=None
+# agents.DQN.exploration=0.1
+# agents.DQN.final_exploration=None
+# agents.DQN.final_exploration_iter=None
+# agents.DQN.prioritization=None
+# agents.DQN.priority_bias_compensation=None
+# agents.DQN.double=False
+# agents.DQN.n_step=None
+# agents.DQN.graph=True
 
 # Set training parameters
 
-# Training.num_parallel_envs = 1
-# Training.eval_env = None
-# Training.net = @SiamQNetwork
-# Training.optimizer = @tf.keras.optimizers.Adam
-# Training.agent = @DdqnAgent
-# Training.replay_buffer = @TFUniformReplayBuffer
-# Training.sample_batch_size = 32
-# Training.collect_metrics = []
-# Training.collect_metrics_buffer_length = 10
-# Training.collect_steps_per_iteration = 1
-# Training.eval_metrics = []
-# Training.num_eval_episodes = 1
-# Training.directory = '.'
-# Training.save_evaluated_policies = False
-# Training.log_to_file = True
-# Training.log_interval = 100
-# Training.eval_interval = 10000
-# Training.checkpoint_interval = 10000
+# siamrl.Training.num_parallel_envs = 1
+# siamrl.Training.eval_env = None
+# siamrl.Training.net = @nets.PseudoSiamFCN
+# siamrl.Training.agent = @agents.DQN
+# siamrl.Training.num_eval_episodes = 10
+# siamrl.Training.directory = '.'
+# siamrl.Training.save_evaluated_policies = False
+# siamrl.Training.log_to_file = True
+# siamrl.Training.log_interval = 100
+# siamrl.Training.eval_interval = 10000
+# siamrl.Training.checkpoint_interval = 10000
 
-# Training.initialize.num_steps = 2048
-# Training.initialize.policy = None
+# siamrl.Training.initialize.num_steps = None
+# siamrl.Training.initialize.policy = None
 
-# CurriculumTraining.eval_env = None
-# CurriculumTraining.collect_metrics = []
-# CurriculumTraining.directory = '.'
-# CurriculumTraining.check_interval = 96
+# siamrl.CurriculumTraining.eval_env = None
+# siamrl.CurriculumTraining.directory = '.'
+# siamrl.CurriculumTraining.check_interval = 1000
