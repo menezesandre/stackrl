@@ -8,6 +8,7 @@ from siamrl.agents import DQN
 from siamrl.envs import make
 from siamrl.utils import Timer, AverageReward
 
+
 @gin.configurable(module='siamrl')
 class Training(object):
   """Implements the DQN training routine"""
@@ -52,6 +53,12 @@ class Training(object):
         explicitly passed as seed to the components, overriding any 
         default/configuration.)
     """
+    # Set log directory and file
+    if not os.path.isdir(directory):
+      os.makedirs(directory)
+    self._log_file = os.path.join(directory, 'train.log') if \
+      log_to_file else None
+
     try:
       devices = tf.config.list_physical_devices('GPU')
     except AttributeError:
@@ -98,13 +105,8 @@ class Training(object):
       seed=seed()
     )
 
-    # Train directory
-    if not os.path.isdir(directory):
-      os.makedirs(directory)
     # Train log
     self._log_interval = log_interval
-    self._log_file = os.path.join(directory, 'train.log') if \
-      log_to_file else None
     self._train_file = os.path.join(directory, 'train.csv')
     # Metrics to keep a long term and a short term average of the training 
     # reward.
@@ -165,7 +167,7 @@ class Training(object):
     """
     self._checkpoint.restore(self._checkpoint_manager.latest_checkpoint)
     if self._checkpoint_manager.latest_checkpoint:
-      self.log('Starting from checkpoint.')
+      self.log('Starting from checkpoint. {}'.format(len(self._agent._replay_memory)))
     else:
       self.log('Starting from scratch.')
       # Evaluate the agent's policy once before training.
