@@ -4,14 +4,13 @@ References:
     (https://lips.cs.princeton.edu/the-gumbel-max-trick-for-discrete-distributions/)
 """
 import tensorflow as tf
-
-inf = -tf.math.log(tf.constant(0.,dtype=tf.float32))
+from math import inf
 
 class ReplayMemory(tf.Module):
   """Memory for experience replay, supporting prioritized experience 
   replay."""
   # Small constant to prevent sample probability from becoming zero.
-  epsilon = tf.constant(1e-10,dtype=tf.float32)
+  epsilon = 1e-10
   def __init__(
     self,
     state_spec,
