@@ -113,9 +113,6 @@ class ReplayMemory(tf.Module):
   def max_length(self):
     return self._max_length.numpy()
 
-  def _relative_index(self, index, offset):
-    return (index+offset)%self._max_length+index//self._max_length
-
   def add(self, state, reward, terminal, action):
     """Stores transitions in the memory."""
     indexes = self._offsets + self._insert_index % self._max_length
@@ -222,6 +219,47 @@ class ReplayMemory(tf.Module):
       self._last_min_value<=self._min_logit,
       true_fn=self._assign_min_logit,
       false_fn=self._maybe_recompute_min_logit
+    )
+
+  def dataset(self, minibatch_size, get_weights=False):
+    """Returns a tf.data.Dataset instance constructed from a generator 
+      that yields the results of sampling minibatch_size transitions from
+      the memory.
+    """
+    sample = tf.function(self.sample).get_concrete_function(
+      minibatch_size, 
+      get_weights=get_weights
+    )
+    def generator():
+      while True:
+        yield sample()
+    
+    state_types = tf.nest.map_structure(lambda s: s.dtype, self._state_spec)
+    state_shapes = tf.nest.map_structure(
+      lambda s: (minibatch_size,)+s.shape[1:], 
+      self._state_spec
+    )
+    output_types = (
+      state_types, 
+      self._actions.dtype, 
+      self._rewards.dtype, 
+      state_types, 
+      self._terminal.dtype
+    )
+    output_shapes = (
+      state_shapes, 
+      tf.TensorShape(minibatch_size),
+      tf.TensorShape(minibatch_size),
+      state_shapes,
+      tf.TensorShape(minibatch_size)
+    )
+    if get_weights:
+      output_types = (self._logits.dtype,output_types)
+      output_shapes = (tf.TensorShape(minibatch_size), output_shapes)
+    return tf.data.Dataset.from_generator(
+      generator, 
+      output_types=output_types,
+      output_shapes=output_shapes
     )
 
   # Utility methods used on conditional control flow

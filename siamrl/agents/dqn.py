@@ -48,6 +48,7 @@ class DQN(tf.Module):
     huber_delta=1.,
     minibatch_size=32,
     replay_memory_size=100000,
+    prefetch=None,
     target_update_period=10000,
     discount_factor=1.,
     collect_batch_size=None,
@@ -77,6 +78,11 @@ class DQN(tf.Module):
       minibatch_size: sample batch size to be used on training.
       replay_memory_size: maximum number of transitions to be stored on
         the replay memory.
+      prefetch: maximum number of minibatches to be prefetched from the 
+        replay memory. None means no prefetching (each minibatch is sampled
+        right before being used). Note: if using prioritized experience 
+        replay, a minibatch used in an iteration may be have been sampled 
+        with priorities from up to this number of iterations earlier.
       target_update_period: number of iterations between target 
         network updates.
       gamma: discount factor for delayed rewards. Scalar between 0 and 1.
@@ -216,6 +222,13 @@ class DQN(tf.Module):
       n_steps=n_step,
       seed=seed
     )
+    dataset = self._replay_memory.dataset(
+      minibatch_size, 
+      get_weights=self._prioritized
+    )
+    if prefetch:
+      dataset = dataset.prefetch(prefetch)
+    self._replay_memory_iter = iter(dataset)
 
     self._double = double
     self._seed = seed
@@ -309,13 +322,10 @@ class DQN(tf.Module):
     # Sample transitions from replay memory
     if self._prioritized:
       weights,(states,actions,rewards,next_states,terminal) = \
-        self._replay_memory.sample(
-          self._minibatch_size, 
-          get_weights=True
-        )
+        next(self._replay_memory_iter)
     else:
       states,actions,rewards,next_states,terminal = \
-        self._replay_memory.sample(self._minibatch_size)
+        next(self._replay_memory_iter)
     
     with tf.GradientTape() as tape:
       # Compute Q values

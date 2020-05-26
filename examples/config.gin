@@ -9,10 +9,10 @@
 # stack.register.num_sim_steps=None
 # stack.register.velocity_threshold=0.01
 # stack.register.smooth_placing = True
-# stack.register.observable_size_ratio=(4,6)
+# stack.register.observable_size_ratio=4
 # stack.register.resolution_factor=5
 # stack.register.max_z=1
-# stack.register.goal_size_ratio=1/3.
+# stack.register.goal_size_ratio=.375
 # stack.register.occupation_ratio_weight=0.
 # stack.register.occupation_ratio_param=False
 # stack.register.positions_weight=0.
@@ -26,7 +26,7 @@
 # stack.register.dtype='float32'
 
 # stack.curriculum.goals = []
-# stack.ckwargs = {}
+# stack.curriculum.ckwargs = {}
 
 # Set network parameters
 
@@ -88,6 +88,7 @@
 # agents.DQN.huber_delta=1.
 # agents.DQN.minibatch_size=32
 # agents.DQN.replay_memory_size=100000
+# agent.DQN.prefetch=None
 # agents.DQN.target_update_period=10000
 # agents.DQN.discount_factor=1.
 # agents.DQN.collect_batch_size=None
