@@ -95,12 +95,11 @@ class Training(object):
     )
 
     # Agent
-    self._net = net(
-      self._env.observation_spec,
-      seed=seed()
-    )
     self._agent = agent(
-      self._net, 
+      net(
+        self._env.observation_spec,
+        seed=seed()
+      ), 
       collect_batch_size=self._env.batch_size,
       seed=seed()
     )
