@@ -12,7 +12,9 @@ while [ -n "$1" ]; do
       shift
       ;;
     stop)
-      rm "$RUNNING"
+      if [ -f "$RUNNING" ]; then
+        rm "$RUNNING"
+      fi
       exit 0
       ;;
     clear)

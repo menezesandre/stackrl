@@ -7,7 +7,11 @@ while [ -n "$1" ]; do
       GPU="$2"
       shift
       ;;
-    -c) CURRICULUM="--curriculum" ;;
+    --tag)
+      TAG=":$2"
+      shift
+      ;;
+    -c) CURRICULUM=" --curriculum" ;;
     -l) eval "$SOURCE_DIR/.log.sh &" ;;
     -i) MODE="-it";;
     -*) echo "Option $1 not recognized" ;;
@@ -26,7 +30,7 @@ fi
 
 if [ -z "$MODE" ]; then
   MODE="-d"
-  REDIRECT="> $CID"
+  REDIRECT=" > $CID"
 fi
 
 if [ ! -d "$DIR" ]; then
@@ -49,4 +53,4 @@ else
   fi
 fi
 
-eval "docker run $GPU -d --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/siamrl train -d ./tmp $CURRICULUM $REDIRECT"
+eval "docker run $GPU $MODE --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/siamrl$TAG train -d ./tmp$CURRICULUM$REDIRECT"

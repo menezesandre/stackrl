@@ -181,19 +181,17 @@ class Training(object):
         )
       # Run initial collect
       self.log('Running initial collect...')
-      o = self._env.reset()
-      if callable(o):
-        o = o()
-      r = tf.zeros((self._env.batch_size,), dtype=tf.float32)
-      t = tf.zeros((self._env.batch_size,), dtype=tf.bool)
+      step = self._env.reset()
       for _ in range(num_steps-1):
-        a = policy(o)
-        self._agent.observe(o, r, t, a)
-        step = self._env.step(a)
         if callable(step):
-          o,r,t = step()
-        else:
-          o,r,t = step
+          step = step()
+        a = policy(step[0])
+        self._agent.observe(*step, a)
+        step = self._env.step(a)
+      if callable(step):
+        o,r,_=step()
+      else:
+        o,r,_=step
       self._agent.observe(
         o,
         r,
@@ -217,12 +215,7 @@ class Training(object):
       collect_timer = Timer()
       train_timer = Timer()
 
-      o = self._env.reset()
-      step = (
-        o() if callable(o) else o,
-        tf.zeros((self._env.batch_size,), dtype=tf.float32),
-        tf.zeros((self._env.batch_size,), dtype=tf.bool)
-      )
+      step = self._env.reset()
 
       for _ in range(max_num_iterations):
         # Colect experience

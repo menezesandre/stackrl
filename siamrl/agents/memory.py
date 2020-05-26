@@ -40,7 +40,7 @@ class ReplayMemory(tf.Module):
       name: name of this module.
     """
     super(ReplayMemory, self).__init__(name=name)
-    with tf.device('CPU'):
+    with tf.device('CPU'), self.name_scope:
       # Set number of partitions as the number of transitions expected to
       # be received by add. This is given by state_spec's batch dimension
       n_parts = tf.nest.flatten(state_spec)[0].shape[0]
@@ -61,26 +61,48 @@ class ReplayMemory(tf.Module):
       self._beta = tf.constant(beta or 1., dtype=tf.float32)
       # Set length of returned transitions
       self._n_steps = tf.constant(n_steps or 1, dtype=tf.int32)
-      self._n_steps_range = tf.squeeze(tf.range(1,self._n_steps+1, dtype=tf.int32))
+      self._n_steps_range = tf.squeeze(
+        tf.range(1,self._n_steps+1, dtype=tf.int32)
+      )
       # Assert memory is large enough
       assert self._max_length > self._n_steps
       # Set local seed for random sampling
       self._seed = seed
       # Set storage
-      self._states = tf.nest.map_structure(
-        lambda x: tf.Variable(tf.zeros((max_length)+x.shape[1:], dtype=x.dtype),name='states'), 
-        state_spec
+      self._state_spec = state_spec
+      self._states = [
+        tf.Variable(
+          tf.zeros((max_length)+i.shape[1:], dtype=i.dtype),
+          name='states'
+        ) for i in tf.nest.flatten(state_spec)
+      ]
+      self._rewards = tf.Variable(
+        tf.zeros(max_length, dtype=tf.float32), 
+        name='rewards'
       )
-      self._rewards = tf.Variable(tf.zeros(max_length, dtype=tf.float32), name='rewards')
-      self._terminal = tf.Variable(tf.zeros(max_length, dtype=tf.bool), name='terminal')
-      self._actions = tf.Variable(tf.zeros(max_length, dtype=tf.int64), name='actions')
-      self._logits = tf.Variable(-inf*tf.ones(max_length, dtype=tf.float32), name='sample')
+      self._terminal = tf.Variable(
+        tf.zeros(max_length, dtype=tf.bool), 
+        name='terminal'
+      )
+      self._actions = tf.Variable(
+        tf.zeros(max_length, dtype=tf.int64), 
+        name='actions'
+      )
+      self._logits = tf.Variable(
+        -inf*tf.ones(max_length, dtype=tf.float32), 
+        name='logits'
+      )
       # Set internal variables 
-      self._insert_index = tf.Variable(0, dtype=tf.int32)
-      self._max_logit = tf.Variable(0., dtype=tf.float32)
-      self._max_logit_index = tf.Variable(0, dtype=tf.int32) 
-      self._min_logit = tf.Variable(0., dtype=tf.float32)
-      self._min_logit_index = tf.Variable(0, dtype=tf.int32) 
+      self._insert_index = tf.Variable(0, dtype=tf.int32, 
+        name='insert_index')
+      self._max_logit = tf.Variable(0., dtype=tf.float32, 
+        name='max_logit')
+      self._max_logit_index = tf.Variable(0, dtype=tf.int32, 
+        name='max_logit_index') 
+      self._min_logit = tf.Variable(0., dtype=tf.float32, 
+        name='min_logit')
+      self._min_logit_index = tf.Variable(0, dtype=tf.int32, 
+        name='min_logit_index') 
 
   def __len__(self):
     """Returns the number of elements that can be sampled from this 
@@ -98,11 +120,8 @@ class ReplayMemory(tf.Module):
     """Stores transitions in the memory."""
     indexes = self._offsets + self._insert_index % self._max_length
     # Update data in storage
-    tf.nest.map_structure(
-      lambda x,y: x.scatter_nd_update(indexes,y),
-      self._states,
-      state
-    )
+    for var, updates in zip(self._states, tf.nest.flatten(state)):
+      var.scatter_nd_update(indexes, updates)
     self._rewards.scatter_nd_update(indexes,reward)
     self._terminal.scatter_nd_update(indexes,terminal)
     self._actions.scatter_nd_update(indexes,action)
@@ -143,9 +162,9 @@ class ReplayMemory(tf.Module):
     )
     with tf.control_dependencies([values]):
       # Get states
-      states = tf.nest.map_structure(
-        lambda x: x.sparse_read(self._last_indexes), 
-        self._states
+      states = tf.nest.pack_sequence_as(
+        self._state_spec,
+        [i.sparse_read(self._last_indexes) for i in self._states]
       )
       # Get actions
       actions = self._actions.sparse_read(self._last_indexes)
@@ -153,9 +172,9 @@ class ReplayMemory(tf.Module):
       next_indexes = (self._last_indexes + self._n_steps) % self._max_length \
         + self._last_indexes // self._max_length
       # Get next states
-      next_states = tf.nest.map_structure(
-        lambda x: x.sparse_read(next_indexes), 
-        self._states
+      next_states = tf.nest.pack_sequence_as(
+        self._state_spec,
+        [i.sparse_read(next_indexes) for i in self._states]
       )
       # Get terminal flags
       terminal = self._terminal.sparse_read(next_indexes)
