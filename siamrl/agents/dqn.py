@@ -174,8 +174,6 @@ class DQN(tf.Module):
     self._huber = huber_delta is not None
     if self._huber:
       self._huber_delta = tf.constant(huber_delta, dtype=tf.float32)
-    # Set minibatch size
-    self._minibatch_size = minibatch_size
     # Set target update period
     self._target_update_period = target_update_period or 10000
     # Set discount factor (gamma) according to n_step
@@ -223,14 +221,17 @@ class DQN(tf.Module):
       n_steps=n_step,
       seed=seed
     )
-    # dataset = self._replay_memory.dataset(
-    #   minibatch_size, 
-    #   get_weights=self._prioritized
-    # )
-    # if prefetch:
-    #   dataset = dataset.prefetch(prefetch)
-    # with FreezeDependencies(self):
-    #   self._replay_memory_iter = iter(dataset)
+    # Set minibatch size
+    # self._minibatch_size = minibatch_size
+    # Get dataset iterator for the replay memory
+    dataset = self._replay_memory.dataset(
+      minibatch_size, 
+      get_weights=self._prioritized
+    )
+    if prefetch:
+      dataset = dataset.prefetch(prefetch)
+    with FreezeDependencies(self):
+      self._replay_memory_iter = iter(dataset)
 
     self._double = double
     self._seed = seed
@@ -322,19 +323,15 @@ class DQN(tf.Module):
 
   def train(self):  # pylint: disable=method-hidden
     # Sample transitions from replay memory
-    # if self._prioritized:
-    #   weights,(states,actions,rewards,next_states,terminal) = \
-    #     next(self._replay_memory_iter)
-    # else:
-    #   states,actions,rewards,next_states,terminal = \
-    #     next(self._replay_memory_iter)
     if self._prioritized:
-      weights,(states,actions,rewards,next_states,terminal) = \
-        self._replay_memory.sample(self._minibatch_size, get_weights=True)
+      indexes,weights,(states,actions,rewards,next_states,terminal) = \
+        next(self._replay_memory_iter)
+        # self._replay_memory.sample(self._minibatch_size, get_weights=True)
     else:
       states,actions,rewards,next_states,terminal = \
-        self._replay_memory.sample(self._minibatch_size)
-    
+        next(self._replay_memory_iter)
+        # self._replay_memory.sample(self._minibatch_size)
+
     with tf.GradientTape() as tape:
       # Compute Q values
       q_values = self._q_net(states)
@@ -387,7 +384,7 @@ class DQN(tf.Module):
     self._optimizer.apply_gradients(zip(grads, variables))
     # If using prioritized experience replay, update priorities
     if self._prioritized:
-      self._replay_memory.update_priorities(td)
+      self._replay_memory.update_priorities(indexes, td)
 
     tf.cond(
       self.iterations % self._target_update_period == 0,
