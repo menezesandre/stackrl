@@ -2,8 +2,6 @@ import time
 import os
 import gin
 import tensorflow as tf
-from siamrl.nets import PseudoSiamFCN
-from siamrl.agents.policies import GreedyPolicy, PyWrapper
 
 class Timer(object):
   """Utility context manager that accumulates execution time 
@@ -89,6 +87,37 @@ class Timer(object):
     self.time = 0.
     self.n = 0
 
+class FreezeDependencies(object):
+  """Utility context manager that freezes the dependencies of a tf.Module
+  (i.e. any attribute added within the context won't be tracked)."""
+  def __init__(self, module):
+    if isinstance(module, tf.Module):
+      self.module = module
+    else:
+      raise TypeError(
+        "Invalid type {} for argument module. Must be a tf.Module.".format(
+          type(module)
+        )
+      )
+
+  def __enter__(self):
+    self._checkpoint_dependencies = self.module._unconditional_checkpoint_dependencies.copy()
+
+  def __exit__(self, type, value, tb):
+    to_del = []
+    for i in self.module._unconditional_checkpoint_dependencies:
+      if i not in self._checkpoint_dependencies:
+        to_del.append(i)
+    for i in to_del:
+      try:
+        self.module._unconditional_checkpoint_dependencies.remove(i)
+      except ValueError:
+        pass
+      try:
+        del self.module._unconditional_dependency_names[i.name]
+      except KeyError:
+        pass
+
 class AverageReward(tf.Module):
   def __init__(self, batch_size):
     """
@@ -160,20 +189,3 @@ class AverageReward(tf.Module):
     self._episode_count.assign(0)
     if full:
       self._episode_reward.assign(tf.zeros_like(self._episode_reward))
-
-def load_policy(observation_spec, path='.', config_file=None, py_format=False):
-  if config_file:
-    try:
-      gin.parse_config_file(config_file)
-    except OSError:
-      gin.parse_config_file(os.path.join(path, config_file))
-
-  net = PseudoSiamFCN(observation_spec)
-  if os.path.isdir(path):
-    path = os.path.join(path,'weights')
-  net.load_weights(path)
-  policy = GreedyPolicy(net)
-  if py_format:
-    policy = PyWrapper(policy)
-  
-  return policy

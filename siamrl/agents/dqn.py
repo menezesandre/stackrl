@@ -12,6 +12,7 @@ import tensorflow as tf
 from tensorflow import keras as k
 from siamrl.agents.policies import GreedyPolicy
 from siamrl.agents.memory import ReplayMemory
+from siamrl.utils import FreezeDependencies
 
 optimizers = {
   'adadelta': k.optimizers.Adadelta,
@@ -228,7 +229,8 @@ class DQN(tf.Module):
     )
     if prefetch:
       dataset = dataset.prefetch(prefetch)
-    self._replay_memory_iter = iter(dataset)
+    with FreezeDependencies(self):
+      self._replay_memory_iter = iter(dataset)
 
     self._double = double
     self._seed = seed

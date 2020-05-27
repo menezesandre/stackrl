@@ -7,7 +7,7 @@ from siamrl.nets import PseudoSiamFCN
 from siamrl.agents import DQN
 from siamrl.envs import make
 from siamrl.utils import Timer, AverageReward
-
+from siamrl.agents.policies import GreedyPolicy, PyWrapper
 
 @gin.configurable(module='siamrl')
 class Training(object):
@@ -507,3 +507,20 @@ class CurriculumTraining(Training):
         self._complete = True
         if self._finish_when_complete:
           raise StopIteration('Training goal achieved.')
+
+def load_policy(observation_spec, path='.', config_file=None, py_format=False):
+  if config_file:
+    try:
+      gin.parse_config_file(config_file)
+    except OSError:
+      gin.parse_config_file(os.path.join(path, config_file))
+
+  net = PseudoSiamFCN(observation_spec)
+  if os.path.isdir(path):
+    path = os.path.join(path,'weights')
+  net.load_weights(path)
+  policy = GreedyPolicy(net)
+  if py_format:
+    policy = PyWrapper(policy)
+  
+  return policy
