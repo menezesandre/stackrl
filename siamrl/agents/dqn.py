@@ -223,14 +223,14 @@ class DQN(tf.Module):
       n_steps=n_step,
       seed=seed
     )
-    dataset = self._replay_memory.dataset(
-      minibatch_size, 
-      get_weights=self._prioritized
-    )
-    if prefetch:
-      dataset = dataset.prefetch(prefetch)
-    with FreezeDependencies(self):
-      self._replay_memory_iter = iter(dataset)
+    # dataset = self._replay_memory.dataset(
+    #   minibatch_size, 
+    #   get_weights=self._prioritized
+    # )
+    # if prefetch:
+    #   dataset = dataset.prefetch(prefetch)
+    # with FreezeDependencies(self):
+    #   self._replay_memory_iter = iter(dataset)
 
     self._double = double
     self._seed = seed
@@ -322,12 +322,18 @@ class DQN(tf.Module):
 
   def train(self):  # pylint: disable=method-hidden
     # Sample transitions from replay memory
+    # if self._prioritized:
+    #   weights,(states,actions,rewards,next_states,terminal) = \
+    #     next(self._replay_memory_iter)
+    # else:
+    #   states,actions,rewards,next_states,terminal = \
+    #     next(self._replay_memory_iter)
     if self._prioritized:
       weights,(states,actions,rewards,next_states,terminal) = \
-        next(self._replay_memory_iter)
+        self._replay_memory.sample(self._minibatch_size, get_weights=True)
     else:
       states,actions,rewards,next_states,terminal = \
-        next(self._replay_memory_iter)
+        self._replay_memory.sample(self._minibatch_size)
     
     with tf.GradientTape() as tape:
       # Compute Q values
