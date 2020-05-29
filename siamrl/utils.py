@@ -87,81 +87,32 @@ class Timer(object):
     self.time = 0.
     self.n = 0
 
-class FreezeDependencies(object):
-  """Utility context manager that freezes the dependencies of a tf.Module
-  (i.e. any attribute added within the context won't be tracked)."""
-  def __init__(self, module):
-    if isinstance(module, tf.Module):
-      self.module = module
-    else:
-      raise TypeError(
-        "Invalid type {} for argument module. Must be a tf.Module.".format(
-          type(module)
-        )
-      )
+class AverageMetric(tf.Module):
+  def __init__(self, dtype=tf.float32):
+    super(AverageMetric, self).__init__(name='Average')
+    self._dtype = tf.dtypes.as_dtype(dtype)
 
-  def __enter__(self):
-    self._checkpoint_dependencies = self.module._unconditional_checkpoint_dependencies.copy()
+    self._total = tf.Variable(tf.zeros((), dtype=self._dtype))
+    self._count = tf.Variable(0, dtype=tf.int32)
 
-  def __exit__(self, type, value, tb):
-    to_del = []
-    for i in self.module._unconditional_checkpoint_dependencies:
-      if i not in self._checkpoint_dependencies:
-        to_del.append(i)
-    for i in to_del:
-      try:
-        self.module._unconditional_checkpoint_dependencies.remove(i)
-      except ValueError:
-        pass
-      try:
-        del self.module._unconditional_dependency_names[i.name]
-      except KeyError:
-        pass
+  def __call__(self, value):
+    self._total.assign_add(value)
+    self._count.assign_add(1)
 
-class AverageReward(tf.Module):
-  def __init__(self, batch_size):
-    """
-    Args:
-      batch_size: of the rewards (and terminal flags) to be received by
-      __call__().
-    """
-    self._total_reward = tf.Variable(0., dtype=tf.float32)
-    self._episode_reward = tf.Variable(tf.zeros(
-      (batch_size,), 
-      dtype=tf.float32
-    ))
-    self._episode_count = tf.Variable(0, dtype=tf.int32)
-  
-  def __call__(self, reward, terminal):
-    """Adds a step's reward to the metric."""
-    # Add this step's reward to the episode reward
-    self._episode_reward.assign_add(reward)
+  @property
+  def result(self):
+    return self._total/tf.cast(self._count, dtype=self._dtype)
 
-    terminal_count = tf.math.count_nonzero(terminal, dtype=tf.int32)
-    terminal_indexes = tf.where(terminal)
-    # Add the number of finished episodes to episode count
-    self._episode_count.assign_add(terminal_count)
-    # Add the rewards from finished episodes to the total reward
-    self._total_reward.assign_add(tf.reduce_sum(
-      self._episode_reward.sparse_read(terminal_indexes)
-    ))
-    # Reset the reward from finished episodes
-    self._episode_reward.scatter_nd_update(
-      terminal_indexes, 
-      tf.zeros(terminal_count, dtype=tf.float32)
-    )
-    # Alternative (TODO check if it's faster)
-    # self._total_reward.assign_add(tf.reduce_sum(tf.where(
-    #   terminal,
-    #   self._episode_reward,
-    #   0.
-    # )))
-    # self._episode_reward.assign(tf.where(
-    #   terminal,
-    #   0.,
-    #   self._episode_reward
-    # ))
-  
+  def reset(self):
+    """Reset metric."""
+    self._total.assign(tf.zeros_like(self._total))
+    self._count.assign(tf.zeros_like(self._count))
+
+  def __iadd__(self, other):
+    """Inplace addition does the same as calling."""
+    self.__call__(other)
+    return self
+
   # Comparison operations
   def __lt__(self, other):
     return self.result < other
@@ -174,18 +125,94 @@ class AverageReward(tf.Module):
   def __gt__(self, other):
     return self.result > other
 
+
+class AverageReward(AverageMetric):
+  def __init__(self, batch_size, dtype=tf.float32):
+    """
+    Args:
+      batch_size: of the rewards (and terminal flags) to be received by
+      __call__().
+    """
+    super(AverageReward, self).__init__(dtype=dtype)
+    self._episode_reward = tf.Variable(tf.zeros(
+      (batch_size,), 
+      dtype=self._dtype
+    ))
+  
+  def __call__(self, step):
+    """Adds a step's reward to the metric.
+    Args:
+      step: collection in which the last two elements are a batch of 
+        rewards and terminal flags."""
+    reward = step[-2]
+    terminal = step[-1]
+    # Add this step's reward to the episode reward
+    self._episode_reward.assign_add(reward)
+
+    terminal_count = tf.math.count_nonzero(terminal, dtype=tf.int32)
+    terminal_indexes = tf.where(terminal)
+    # Add the number of finished episodes to episode count
+    self._count.assign_add(terminal_count)
+    # Add the rewards from finished episodes to the total reward
+    self._total.assign_add(tf.reduce_sum(
+      self._episode_reward.sparse_read(terminal_indexes)
+    ))
+    # Reset the reward from finished episodes
+    self._episode_reward.scatter_nd_update(
+      terminal_indexes, 
+      tf.zeros(terminal_count, dtype=tf.float32)
+    )
+    # Alternative (TODO check if it's faster)
+    # self._total.assign_add(tf.reduce_sum(tf.where(
+    #   terminal,
+    #   self._episode_reward,
+    #   0.
+    # )))
+    # self._episode_reward.assign(tf.where(
+    #   terminal,
+    #   0.,
+    #   self._episode_reward
+    # ))
+
   @property
   def episode_count(self):
-    return self._episode_count
+    return self._count
   
-  @property
-  def result(self):
-    return self._total_reward/tf.cast(self._episode_count, dtype=tf.float32)
-
-  def reset(self, full=True):
+  def reset(self, full=False):
     """Reset metric. If full is False, the rewards of the ongoing episodes
     are kept."""
-    self._total_reward.assign(0.)
-    self._episode_count.assign(0)
+    super(AverageReward, self).reset()
     if full:
       self._episode_reward.assign(tf.zeros_like(self._episode_reward))
+
+# class FreezeDependencies(object):
+#   """Utility context manager that freezes the dependencies of a tf.Module
+#   (i.e. any attribute added within the context won't be tracked)."""
+#   def __init__(self, module):
+#     if isinstance(module, tf.Module):
+#       self.module = module
+#     else:
+#       raise TypeError(
+#         "Invalid type {} for argument module. Must be a tf.Module.".format(
+#           type(module)
+#         )
+#       )
+
+#   def __enter__(self):
+#     self._checkpoint_dependencies = self.module._unconditional_checkpoint_dependencies.copy()
+
+#   def __exit__(self, type, value, tb):
+#     to_del = []
+#     for i in self.module._unconditional_checkpoint_dependencies:
+#       if i not in self._checkpoint_dependencies:
+#         to_del.append(i)
+#     for i in to_del:
+#       try:
+#         self.module._unconditional_checkpoint_dependencies.remove(i)
+#       except ValueError:
+#         pass
+#       try:
+#         del self.module._unconditional_dependency_names[i.name]
+#       except KeyError:
+#         pass
+

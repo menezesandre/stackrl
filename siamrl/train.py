@@ -6,16 +6,15 @@ import tensorflow as tf
 from siamrl.nets import PseudoSiamFCN
 from siamrl.agents import DQN
 from siamrl.envs import make
-from siamrl.utils import Timer, AverageReward
-from siamrl.agents.policies import GreedyPolicy, PyWrapper
+from siamrl.utils import Timer, AverageMetric, AverageReward
 
 @gin.configurable(module='siamrl')
-class Training(object):
+class Training(tf.Module):
   """Implements the DQN training routine"""
   def __init__(
     self,
     env,
-    n_parallel_envs=None,
+    num_parallel_envs=None,
     eval_env=None,
     net=PseudoSiamFCN,
     agent=DQN,
@@ -33,7 +32,7 @@ class Training(object):
     Args:
       env: Training environment. Either an instance of a gym Env or the id 
         of the environment on the gym registry.
-      n_parallel_envs: number of environments to run in parallel. Only 
+      num_parallel_envs: number of environments to run in parallel. Only 
         used if env is not an Env instance. None defaults to 1.
       net: constructor for the Q network. Receives a (possibly nested) 
         tuple with input shape as argument.
@@ -53,6 +52,7 @@ class Training(object):
         explicitly passed as seed to the components, overriding any 
         default/configuration.)
     """
+    super(Training, self).__init__(name='Training')
     # Set log directory and file
     if not os.path.isdir(directory):
       os.makedirs(directory)
@@ -84,12 +84,12 @@ class Training(object):
     # Environment
     self._env = make(
       env, 
-      n_parallel=n_parallel_envs, 
+      n_parallel=num_parallel_envs, 
       seed=seed()
     )
     self._eval_env = make(
       eval_env or env, 
-      n_parallel=n_parallel_envs,
+      n_parallel=num_parallel_envs,
       block=True,
       seed=seed()
     )
@@ -107,17 +107,19 @@ class Training(object):
     # Train log
     self._log_interval = log_interval
     self._train_file = os.path.join(directory, 'train.csv')
-    # Metrics to keep a long term and a short term average of the training 
-    # reward.
-    self._train_lt_average_reward = AverageReward(self._env.batch_size)
-    self._train_st_average_reward = AverageReward(self._env.batch_size)
-
     # Evaluation log
     self._eval_interval = eval_interval
     self._eval_file = os.path.join(directory, 'eval.csv')    
     self._num_eval_episodes = tf.constant(num_eval_episodes, dtype=tf.int32)
-    # Metric for the evaluation average reward.
-    self._eval_average_reward = AverageReward(self._eval_env.batch_size)
+    
+    # Metrics
+    self._reward = AverageReward(self._env.batch_size)
+    self._avg_reward = AverageReward(self._env.batch_size)
+    self._eval_reward = AverageReward(self._eval_env.batch_size)
+    self._loss = AverageMetric(self._env.batch_size)
+    self._collect_timer = Timer()
+    self._train_timer = Timer()
+
     # Save policy weights
     self._save_weights = save_evaluated_policies
     self._save_filepath = lambda i: os.path.join(
@@ -129,7 +131,7 @@ class Training(object):
 
     # Train checkpoints
     self._checkpoint_interval = checkpoint_interval
-    self._checkpoint = tf.train.Checkpoint(agent=self._agent)
+    self._checkpoint = tf.train.Checkpoint(training=self)
     self._checkpoint_manager = tf.train.CheckpointManager(
       self._checkpoint,
       directory=os.path.join(directory, 'checkpoint'), 
@@ -166,7 +168,7 @@ class Training(object):
     """
     self._checkpoint.restore(self._checkpoint_manager.latest_checkpoint)
     if self._checkpoint_manager.latest_checkpoint:
-      self.log('Starting from checkpoint. {}'.format(len(self._agent._replay_memory)))
+      self.log('Starting from checkpoint.')
     else:
       self.log('Starting from scratch.')
       # Evaluate the agent's policy once before training.
@@ -211,35 +213,28 @@ class Training(object):
     if not self._initialized:
       self.initialize()
     try:
-      collect_timer = Timer()
-      train_timer = Timer()
-
       step = self._env.reset()
-
+      self._agent.acknowledge_reset()
       for _ in range(max_num_iterations):
         # Colect experience
-        with collect_timer:
+        with self._collect_timer:
           if callable(step):
             step = step() # pylint: disable=not-callable
 
-          self._train_lt_average_reward(*step[1:])
-          self._train_st_average_reward(*step[1:])
+          self._avg_reward += step
+          self._reward += step
 
           action = self._agent.collect(*step)
           step = self._env.step(action)
         
         # Train on the sampled batch
-        with train_timer:
-          loss = self._agent.train()
+        with self._train_timer:
+          self._loss += self._agent.train()
 
         iters = self.iterations
 
         if iters % self._log_interval == 0:
-          self.log_train(
-            loss.numpy(),
-            collect_timer(),
-            train_timer()
-          )
+          self.log_train()
         if iters % self._checkpoint_interval == 0:
           self.checkpoint()
         if iters % self._eval_interval == 0:
@@ -257,14 +252,15 @@ class Training(object):
     """Evaluates the current policy and writes the results."""
     self.log('Running evaluation...')
     # Reset evaluation reward and environment
-    self._eval_average_reward.reset()
-    o = self._eval_env.reset()
-    while tf.less(
-      self._eval_average_reward.episode_count, 
-      self._num_eval_episodes
-    ):
-      o,r,t = self._eval_env.step(self._agent.policy(o))
-      self._eval_average_reward(r,t)
+    self._eval_reward.reset(full=True)
+    step = self._eval_env.reset()
+    while self._eval_reward.episode_count < self._num_eval_episodes:
+      if callable(step):
+        o = step()[0]
+      else:
+        o = step[0]
+      step = self._eval_env.step(self._agent.policy(o))
+      self._eval_reward += step
 
     # If file is to be created, add header
     if not os.path.isfile(self._eval_file):
@@ -274,7 +270,7 @@ class Training(object):
     # Add iteration number and results
     line += '{},{}\n'.format(
       self.iterations,
-      self._eval_average_reward.result.numpy()
+      self._eval_reward.result.numpy()
     )
     # Write to file
     with open(self._eval_file, 'a') as f:
@@ -309,31 +305,32 @@ class Training(object):
     else:
       sys.stdout.write(line)
 
-  def log_train(self, loss, collect_time, train_time):
+  def log_train(self):
     """Logs current step's results."""
     iters = self.iterations
-    lt_avg_reward = self._train_lt_average_reward.result.numpy()
-    st_avg_reward = self._train_st_average_reward.result.numpy()
-    # Reset the short term average reward metric
-    self._train_st_average_reward.reset(full=False)
+
+    reward = self._reward.result.numpy()
+    loss = self._loss.result.numpy()
+    self._reward.reset()
+    self._loss.reset()
 
     # If file doesn't exist, write header
     if not os.path.isfile(self._train_file):
-      line = 'Iter,LTAvgReward,STAvgReward,Loss,CollectTime,TrainTime\n'
+      line = 'Iter,AvgReward,Reward,Loss,CollectTime,TrainTime\n'
     else:
       line = ''
     line += '{},{},{},{},{},{}\n'.format(
       iters,
-      lt_avg_reward,
-      st_avg_reward,
+      self._avg_reward.result.numpy(),
+      reward,
       loss,
-      collect_time,
-      train_time
+      self._collect_timer(),
+      self._train_timer()
     )
     with open(self._train_file, 'a') as f:
       f.write(line)
     
-    self.log('Iter %7d\tReward %.6f\tLoss %.6f'%(iters,lt_avg_reward,loss))
+    self.log('Iter {:8} Reward {:12.7} Loss {:12.7}'.format(iters,reward,loss))
 
   def log_exception(self):
     """Logs the last exception's traceback with a timestamp"""
@@ -491,7 +488,7 @@ class CurriculumTraining(Training):
 
   def _callback(self):
     if not self._complete and \
-      self._train_lt_average_reward >= self._current_goal*(1-self.epsilon):
+      self._avg_reward >= self._current_goal*(1-self.epsilon):
 
       self.log('Goal reward achieved.')
       if not os.path.isfile(self._curriculum_file):
@@ -503,24 +500,8 @@ class CurriculumTraining(Training):
         f.write(line)
       try:
         self._update_environment()
+        self._avg_reward.reset(full=True)
       except StopIteration:
         self._complete = True
         if self._finish_when_complete:
           raise StopIteration('Training goal achieved.')
-
-def load_policy(observation_spec, path='.', config_file=None, py_format=False):
-  if config_file:
-    try:
-      gin.parse_config_file(config_file)
-    except OSError:
-      gin.parse_config_file(os.path.join(path, config_file))
-
-  net = PseudoSiamFCN(observation_spec)
-  if os.path.isdir(path):
-    path = os.path.join(path,'weights')
-  net.load_weights(path)
-  policy = GreedyPolicy(net)
-  if py_format:
-    policy = PyWrapper(policy)
-  
-  return policy
