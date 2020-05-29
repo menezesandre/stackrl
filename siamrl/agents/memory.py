@@ -43,19 +43,17 @@ class ReplayMemory(tf.Module):
     with tf.device('CPU'), self.name_scope:
       # Set number of partitions as the number of transitions expected to
       # be received by add. This is given by state_spec's batch dimension
-      n_parts = tf.nest.flatten(state_spec)[0].shape[0]
+      self._n_parts = tf.nest.flatten(state_spec)[0].shape[0]
       # Make max_length divisible by num_partitions
-      max_length -= max_length % n_parts
+      max_length -= max_length % self._n_parts
       # Set maximum partition length
-      self._max_length = tf.constant(max_length//n_parts, dtype=tf.int32)
+      self._max_length = tf.constant(max_length//self._n_parts, dtype=tf.int32)
       # Set partitions' offsets (shaped to match what is expected by arg
       # indexes of tf.Variable.scatter_nd_update)
       self._offsets = tf.expand_dims(
-        tf.range(n_parts, dtype=tf.int32)*self._max_length,
+        tf.range(self._n_parts, dtype=tf.int32)*self._max_length,
         -1
       )
-      # Set tensor with correct shape to assign logits to added samples.
-      self._new_logits = -inf*tf.ones(n_parts, dtype=tf.float32)
       # Set prioritization and bias compensation
       self._alpha = tf.constant(alpha or 0., dtype=tf.float32)
       self._beta = tf.constant(beta or 1., dtype=tf.float32)
@@ -123,7 +121,7 @@ class ReplayMemory(tf.Module):
     self._terminal.scatter_nd_update(indexes,terminal)
     self._actions.scatter_nd_update(indexes,action)
     # Set this element as unsampleable (until next_state is available)
-    self._logits.scatter_nd_update(indexes,self._new_logits)
+    self._logits.scatter_nd_update(indexes, [-inf]*self._n_parts)
     # Set element from n steps back as sampleable if there's no episode
     # boundary.
     indexes = self._offsets + (self._insert_index-self._n_steps_range) % self._max_length
@@ -140,6 +138,12 @@ class ReplayMemory(tf.Module):
     )
 
     self._insert_index.assign_add(1)
+
+  def set_terminal(self):
+    """Sets the latest transition added as terminal. (To be used when the
+      environment is reset after a non terminal state.)"""
+    indexes = self._offsets + (self._insert_index-1) % self._max_length
+    self._terminal.scatter_nd_update(indexes,[True]*self._n_parts) 
 
   def sample(self, minibatch_size, get_weights=False):
     """Samples transitions from memory.

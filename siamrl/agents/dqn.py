@@ -12,7 +12,7 @@ import tensorflow as tf
 from tensorflow import keras as k
 from siamrl.agents.policies import GreedyPolicy
 from siamrl.agents.memory import ReplayMemory
-from siamrl.utils import FreezeDependencies
+# from siamrl.utils import FreezeDependencies
 
 optimizers = {
   'adadelta': k.optimizers.Adadelta,
@@ -230,8 +230,9 @@ class DQN(tf.Module):
     )
     if prefetch:
       dataset = dataset.prefetch(prefetch)
-    with FreezeDependencies(self):
-      self._replay_memory_iter = iter(dataset)
+    # with FreezeDependencies(self):
+    #   self._replay_memory_iter = iter(dataset)
+    self._replay_memory_iter = self._no_dependency(iter(dataset))
 
     self._double = double
     self._seed = seed
@@ -269,6 +270,10 @@ class DQN(tf.Module):
       )
       self.train = tf.function(self.train, input_signature=[])
 
+  def __del__(self):
+    del(self._replay_memory_iter)
+    super(DQN, self).__del__()
+
   def __call__(self, state, reward, terminal, action=None):
     if action is None:
       return self.collect(state,reward,terminal)
@@ -296,6 +301,12 @@ class DQN(tf.Module):
   def save_weights(self, *args, **kwargs):
     """Save weights from the Q net."""
     return self._q_net.save_weights(*args, **kwargs)
+
+  def acknowledge_reset(self):
+    """Sets the latest transition in the replay memory as terminal. This
+      must be used any time the environment is explicitly reset after a 
+      non terminal state."""
+    self._replay_memory.set_terminal()
 
   def observe(self, state, reward, terminal, action):  # pylint: disable=method-hidden
     """Stores time step in the replay memory"""
