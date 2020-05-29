@@ -13,7 +13,7 @@ from siamrl.envs.stack import register
 
 policy = None
 ns = 1024
-gui = True
+gui = False
 
 if __name__=='__main__':
   """Raises KeyError if provided argument isn't one of the implemented 
