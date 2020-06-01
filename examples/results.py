@@ -137,7 +137,7 @@ if __name__=='__main__':
         legend.append(key)
 
     if len(legend) > 1:
-      fig.legend(legend)
+      plt.legend(legend, loc='best')
 
     for ax, key, y in zip(axs, target_keys, targets):
       ax.set_ylabel(key)
