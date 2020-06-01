@@ -378,7 +378,10 @@ class DQN(tf.Module):
         self._gamma*target_q_values
       )
       # Compute temporal difference error
-      td = tf.abs(q_values - tf.stop_gradient(target_q_values))
+      # td = tf.abs(q_values - tf.stop_gradient(target_q_values))
+      td = q_values - tf.stop_gradient(target_q_values)
+      mtd = tf.reduce_mean(td)
+      td = tf.abs(td)
       # Compute the loss
       if self._huber:
         quadratic = tf.minimum(td, self._huber_delta)
@@ -402,7 +405,7 @@ class DQN(tf.Module):
       true_fn=self._update_target,
       false_fn=lambda: self._target_q_net.trainable_weights
     )      
-    return loss
+    return loss, mtd
 
   def _update_target(self):
     for v,vt in zip(

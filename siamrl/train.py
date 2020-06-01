@@ -116,7 +116,8 @@ class Training(tf.Module):
     self._reward = AverageReward(self._env.batch_size)
     self._avg_reward = AverageReward(self._env.batch_size)
     self._eval_reward = AverageReward(self._eval_env.batch_size)
-    self._loss = AverageMetric(self._env.batch_size)
+    self._loss = AverageMetric()
+    self._mean_error = AverageMetric()
     self._collect_timer = Timer()
     self._train_timer = Timer()
 
@@ -229,7 +230,9 @@ class Training(tf.Module):
         
         # Train on the sampled batch
         with self._train_timer:
-          self._loss += self._agent.train()
+          loss, merr = self._agent.train()
+          self._loss += loss
+          self._mean_error += merr
 
         iters = self.iterations
 
@@ -311,19 +314,22 @@ class Training(tf.Module):
 
     reward = self._reward.result.numpy()
     loss = self._loss.result.numpy()
+    merr = self._mean_error.result.numpy()
     self._reward.reset()
     self._loss.reset()
+    self._mean_error.reset()
 
     # If file doesn't exist, write header
     if not os.path.isfile(self._train_file):
-      line = 'Iter,AvgReward,Reward,Loss,CollectTime,TrainTime\n'
+      line = 'Iter,AvgReward,Reward,Loss,MeanErrorCollectTime,TrainTime\n'
     else:
       line = ''
-    line += '{},{},{},{},{},{}\n'.format(
+    line += '{},{},{},{},{},{},{}\n'.format(
       iters,
       self._avg_reward.result.numpy(),
       reward,
       loss,
+      merr,
       self._collect_timer(),
       self._train_timer()
     )
