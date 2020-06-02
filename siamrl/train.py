@@ -496,7 +496,7 @@ class CurriculumTraining(Training):
 
   def _callback(self):
     if not self._complete and \
-      self._avg_reward >= self._current_goal*(1-self.epsilon):
+      self._reward >= self._current_goal*(1-self.epsilon):
 
       self.log('Goal reward achieved.')
       if not os.path.isfile(self._curriculum_file):
@@ -508,7 +508,6 @@ class CurriculumTraining(Training):
         f.write(line)
       try:
         self._update_environment()
-        self._avg_reward.reset(full=True)
       except StopIteration:
         self._complete = True
         if self._finish_when_complete:
