@@ -34,4 +34,4 @@ for d in "${DIRS[@]}"; do
   CMDS="$CMDS tail -n $N $d/train.log && head -n 1 $d/train.csv && tail -n 1 $d/train.csv && head -n 1 $d/eval.csv && tail -n 1 $d/eval.csv"
 done
 
-eval "watch "$CMDS""
+eval "watch \"$CMDS\""
