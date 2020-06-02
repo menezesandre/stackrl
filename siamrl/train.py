@@ -9,7 +9,7 @@ from siamrl.envs import make
 from siamrl.utils import Timer, AverageMetric, AverageReward
 
 @gin.configurable(module='siamrl')
-class Training(tf.Module):
+class Training(object):
   """Implements the DQN training routine"""
   def __init__(
     self,
@@ -52,7 +52,6 @@ class Training(tf.Module):
         explicitly passed as seed to the components, overriding any 
         default/configuration.)
     """
-    super(Training, self).__init__(name='Training')
     # Set log directory and file
     if not os.path.isdir(directory):
       os.makedirs(directory)
@@ -132,7 +131,13 @@ class Training(tf.Module):
 
     # Train checkpoints
     self._checkpoint_interval = checkpoint_interval
-    self._checkpoint = tf.train.Checkpoint(training=self)
+    self._checkpoint = tf.train.Checkpoint(
+      agent=self._agent,
+      reward=self._reward,
+      avg_reward=self._avg_reward,
+      loss=self._loss,
+      mean_error=self._mean_error
+    )
     self._checkpoint_manager = tf.train.CheckpointManager(
       self._checkpoint,
       directory=os.path.join(directory, 'checkpoint'), 
