@@ -473,7 +473,7 @@ class CurriculumTraining(Training):
     )
 
     assert new_env.observation_spec == self._env.observation_spec \
-      and new_env.action_spec() == self._env.action_spec(), \
+      and new_env.action_spec == self._env.action_spec, \
       "All envs in curriculum must have same observation and action specs."
 
     del(self._env)
