@@ -18,7 +18,8 @@ class Training(object):
     eval_env=None,
     net=PseudoSiamFCN,
     agent=DQN,
-    num_eval_episodes=10,
+    train_reward_buffer_length=10,
+    eval_reward_buffer_length=10,
     directory='.',
     save_evaluated_policies=False,
     log_to_file=True,
@@ -38,7 +39,10 @@ class Training(object):
         tuple with input shape as argument.
       agent: constructor for the agent. Receives the Q network as 
         argument.
-      num_eval_episodes: number of episodes to run on policy evaluation.
+      train_reward_buffer_length: train reward logged is the average of 
+        the rewards from this number of most recent episodes. 
+      eval_reward_buffer_length: number of episodes to run on policy 
+        evaluation.
       directory: path to the directory where checkpoints, models and logs
         are to be saved
       save_evaluated_policies: whether to save the agent's net weights
@@ -109,14 +113,17 @@ class Training(object):
     # Evaluation log
     self._eval_interval = eval_interval
     self._eval_file = os.path.join(directory, 'eval.csv')    
-    self._num_eval_episodes = tf.constant(num_eval_episodes, dtype=tf.int32)
     
     # Metrics
-    self._reward = AverageReward(self._env.batch_size)
-    self._avg_reward = AverageReward(self._env.batch_size)
-    self._eval_reward = AverageReward(self._eval_env.batch_size)
-    self._loss = AverageMetric()
-    self._mean_error = AverageMetric()
+    self._reward = AverageReward(
+      self._env.batch_size,
+      length=train_reward_buffer_length)
+    self._eval_reward = AverageReward(
+      self._eval_env.batch_size,
+      length=eval_reward_buffer_length
+    )
+    self._loss = AverageMetric(length=log_interval)
+    self._mean_error = AverageMetric(length=log_interval)
     self._collect_timer = Timer()
     self._train_timer = Timer()
 
@@ -133,10 +140,7 @@ class Training(object):
     self._checkpoint_interval = checkpoint_interval
     self._checkpoint = tf.train.Checkpoint(
       agent=self._agent,
-      reward=self._reward,
-      avg_reward=self._avg_reward,
-      loss=self._loss,
-      mean_error=self._mean_error
+      reward=self._reward
     )
     self._checkpoint_manager = tf.train.CheckpointManager(
       self._checkpoint,
@@ -226,10 +230,7 @@ class Training(object):
         with self._collect_timer:
           if callable(step):
             step = step() # pylint: disable=not-callable
-
-          self._avg_reward += step
           self._reward += step
-
           action = self._agent.collect(*step)
           step = self._env.step(action)
         
@@ -262,7 +263,7 @@ class Training(object):
     # Reset evaluation reward and environment
     self._eval_reward.reset(full=True)
     step = self._eval_env.reset()
-    while self._eval_reward.episode_count < self._num_eval_episodes:
+    while not self._eval_reward.full:
       if callable(step):
         o = step()[0]
       else:
@@ -320,18 +321,14 @@ class Training(object):
     reward = self._reward.result.numpy()
     loss = self._loss.result.numpy()
     merr = self._mean_error.result.numpy()
-    self._reward.reset()
-    self._loss.reset()
-    self._mean_error.reset()
 
     # If file doesn't exist, write header
     if not os.path.isfile(self._train_file):
-      line = 'Iter,AvgReward,Reward,Loss,MeanError,CollectTime,TrainTime\n'
+      line = 'Iter,Reward,Loss,MeanError,CollectTime,TrainTime\n'
     else:
       line = ''
-    line += '{},{},{},{},{},{},{}\n'.format(
+    line += '{},{},{},{},{},{}\n'.format(
       iters,
-      self._avg_reward.result.numpy(),
       reward,
       loss,
       merr,
@@ -341,7 +338,7 @@ class Training(object):
     with open(self._train_file, 'a') as f:
       f.write(line)
     
-    self.log('Iter {:8} Reward {:12.7} Loss {:12.7}'.format(iters,reward,loss))
+    self.log('Iter {:8} Reward {:<11.6} Loss {:<11.6}'.format(iters,reward,loss))
 
   def log_exception(self):
     """Logs the last exception's traceback with a timestamp"""

@@ -88,31 +88,42 @@ class Timer(object):
     self.n = 0
 
 class AverageMetric(tf.Module):
-  def __init__(self, dtype=tf.float32):
+  def __init__(self, length=100, dtype=tf.float32):
     super(AverageMetric, self).__init__(name='Average')
     self._dtype = tf.dtypes.as_dtype(dtype)
+    self._length = length
 
-    self._total = tf.Variable(tf.zeros((), dtype=self._dtype))
-    self._count = tf.Variable(0, dtype=tf.int32)
-
-  def __call__(self, value):
-    self._total.assign_add(value)
-    self._count.assign_add(1)
+    self._index = tf.Variable(0, dtype=tf.int32)
+    self._values = tf.Variable(tf.zeros((length,), dtype=self._dtype))
 
   @property
   def result(self):
-    return self._total/tf.cast(self._count, dtype=self._dtype)
+    return tf.reduce_mean(self._values) if self.full else \
+      tf.reduce_sum(self._values)/tf.cast(self._index, dtype=self._dtype)
+  @property
+  def full(self):
+    return self._index >= self._length
+
+  def add(self, value):
+    self._values.scatter_update(tf.IndexedSlices(
+      value,
+      self._index%self._length
+    ))
+    self._index.assign_add(1)
 
   def reset(self):
     """Reset metric."""
-    self._total.assign(tf.zeros_like(self._total))
-    self._count.assign(tf.zeros_like(self._count))
+    self._values.assign(tf.zeros_like(self._values))
+    self._index.assign(tf.zeros_like(self._index))
 
+  # Aliases of add.
+  def __call__(self, *args, **kwargs):
+    """Calling does the same as add"""
+    return self.add(*args, **kwargs)
   def __iadd__(self, other):
-    """Inplace addition does the same as calling."""
-    self.__call__(other)
+    """Inplace adition does the same as add"""
+    self.add(other)
     return self
-
   # Comparison operations
   def __lt__(self, other):
     return self.result < other
@@ -125,21 +136,20 @@ class AverageMetric(tf.Module):
   def __gt__(self, other):
     return self.result > other
 
-
 class AverageReward(AverageMetric):
-  def __init__(self, batch_size, dtype=tf.float32):
+  def __init__(self, batch_size, length=100, dtype=tf.float32):
     """
     Args:
       batch_size: of the rewards (and terminal flags) to be received by
       __call__().
     """
-    super(AverageReward, self).__init__(dtype=dtype)
+    super(AverageReward, self).__init__(length=length, dtype=dtype)
     self._episode_reward = tf.Variable(tf.zeros(
       (batch_size,), 
       dtype=self._dtype
     ))
   
-  def __call__(self, step):
+  def add(self, step):
     """Adds a step's reward to the metric.
     Args:
       step: collection in which the last two elements are a batch of 
@@ -148,35 +158,10 @@ class AverageReward(AverageMetric):
     terminal = step[-1]
     # Add this step's reward to the episode reward
     self._episode_reward.assign_add(reward)
-
-    terminal_count = tf.math.count_nonzero(terminal, dtype=tf.int32)
-    terminal_indexes = tf.where(terminal)
-    # Add the number of finished episodes to episode count
-    self._count.assign_add(terminal_count)
-    # Add the rewards from finished episodes to the total reward
-    self._total.assign_add(tf.reduce_sum(
-      self._episode_reward.sparse_read(terminal_indexes)
-    ))
-    # Reset the reward from finished episodes
-    self._episode_reward.scatter_nd_update(
-      terminal_indexes, 
-      tf.zeros(terminal_count, dtype=tf.float32)
-    )
-    # Alternative (TODO check if it's faster)
-    # self._total.assign_add(tf.reduce_sum(tf.where(
-    #   terminal,
-    #   self._episode_reward,
-    #   0.
-    # )))
-    # self._episode_reward.assign(tf.where(
-    #   terminal,
-    #   0.,
-    #   self._episode_reward
-    # ))
-
-  @property
-  def episode_count(self):
-    return self._count
+    # Add the rewards from the finished episodes to the buffer and reset them
+    for i in tf.squeeze(tf.where(terminal), axis=-1):
+      super(AverageReward, self).add(self._episode_reward.sparse_read(i))
+      self._episode_reward.scatter_update(tf.IndexedSlices(0, i))
   
   def reset(self, full=False):
     """Reset metric. If full is False, the rewards of the ongoing episodes
