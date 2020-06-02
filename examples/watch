@@ -1,0 +1,37 @@
+#!/bin/bash
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIRS=( )
+N=42
+while [ -n "$1" ]; do
+  case "$1" in
+    -n) 
+      N="$2"
+      shift
+      ;;
+    -*) echo "Option $1 not recognized" ;;
+    *)
+      dir="$SOURCE_DIR/$1"
+      if [ -d "$dir" ]; then
+        DIRS+=( "$SOURCE_DIR/$1" )
+      fi 
+      ;;
+  esac
+  shift
+done
+
+if [ -z "$DIRS" ]; then
+  active=($(ls "$SOURCE_DIR" -a | grep ".cid_*"))
+  for i in "${active[@]}"; do
+    DIRS+=( "$SOURCE_DIR/${i:5:100}" )
+  done
+fi
+
+N=$(( N / ${#DIRS[@]} - 4 - ${#DIRS[@]} + 1 ))
+for d in "${DIRS[@]}"; do
+  if [ -n "$CMDS" ]; then
+    CMDS="$CMDS && echo &&"
+  fi
+  CMDS="$CMDS tail -n $N $d/train.log && head -n 1 $d/train.csv && tail -n 1 $d/train.csv && head -n 1 $d/eval.csv && tail -n 1 $d/eval.csv"
+done
+
+eval "watch "$CMDS""
