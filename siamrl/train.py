@@ -162,6 +162,16 @@ class Training(object):
   def iterations(self):
     return self._agent.iterations.numpy()
 
+  @property
+  def reset_env(self):
+    """Set self._reset_env on a subclass to trigger an
+      environment reset on the training loop."""
+    if hasattr(self, '_reset_env') and self._reset_env: # pylint: disable=access-member-before-definition
+      self._reset_env = False
+      return True
+    else:
+      return False
+
   @gin.configurable(module='siamrl.Training')
   def initialize(
     self,
@@ -252,6 +262,11 @@ class Training(object):
             self.save()
         if self._callback_interval and iters % self._callback_interval == 0:
           self._callback()
+        if self.reset_env:
+          step = self._env.reset()
+          self._agent.acknowledge_reset()
+
+
     except:
       self.log_exception()    
     finally:
@@ -435,6 +450,7 @@ class CurriculumTraining(Training):
       **kwargs
     )
 
+    self._reset_env = False
     self._callback_interval = check_interval
 
   @property
@@ -493,6 +509,8 @@ class CurriculumTraining(Training):
       self._eval_env = new_env
 
     self.log('Done.')
+    # Set flag to trigger environment reset on the training loop
+    self._reset_env = True
 
   def _callback(self):
     if not self._complete and \
