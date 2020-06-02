@@ -326,7 +326,7 @@ class Training(object):
 
     # If file doesn't exist, write header
     if not os.path.isfile(self._train_file):
-      line = 'Iter,AvgReward,Reward,Loss,MeanErrorCollectTime,TrainTime\n'
+      line = 'Iter,AvgReward,Reward,Loss,MeanError,CollectTime,TrainTime\n'
     else:
       line = ''
     line += '{},{},{},{},{},{},{}\n'.format(
