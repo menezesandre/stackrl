@@ -25,6 +25,16 @@ def get_space_spec(space):
     get_space_attr(space, 'dtype')
   )
 
+def assert_registered(env_id, message=None):
+  """Raises gym.error.UnregisteredEnv if env_id is not in the gym
+  registry.
+  """
+  message = message or \
+    "No registered env with id: {}".format(env_id)
+  if not env_id in gym.envs.registry.env_specs:
+    raise gym.error.UnregisteredEnv(message)
+
+
 def make(env, n_parallel=None, block=None, **kwargs):
   """
   Args:
