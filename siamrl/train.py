@@ -369,6 +369,7 @@ class Training(object):
     """To be implemented in subclasses for costum callbacks within run"""
     raise NotImplementedError('No costum callback implemented.')
 
+# TODO merge CurriculumTraining with super (adding argument) 
 @gin.configurable(module='siamrl')
 class CurriculumTraining(Training):
   """Extends Training class to implement a curriculum. A list of 
@@ -522,7 +523,7 @@ class CurriculumTraining(Training):
       else:
         line = ''
       line += '{},{}\n'.format(self.iterations, self._current_goal)
-      with open(self._curriculum_file, 'w') as f:
+      with open(self._curriculum_file, 'a') as f:
         f.write(line)
       try:
         self._update_environment()
