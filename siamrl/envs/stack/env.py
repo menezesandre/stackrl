@@ -451,13 +451,12 @@ def curriculum(goals=[], ckwargs={}, **kwargs):
     kwargs: constant keyword aguments (for all environments
       registered).
   Returns:
-    Dictionary with registered environment ids as keys and 
-      respective goals as values.
+    List of tuples with registered environment ids and
+    respective goals.
   """
-  ids = {}
+  ids = []
   # Turn dict of lists to list of dicts
   ckwargs = [dict(zip(ckwargs,values)) for values in zip(*ckwargs.values())]
   for g, a in zip(goals, ckwargs):
-    env_id = register(**a, **kwargs)
-    ids[env_id] = g
+    ids.append((register(**a, **kwargs), g))
   return ids
