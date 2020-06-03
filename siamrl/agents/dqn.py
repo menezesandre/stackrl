@@ -6,6 +6,8 @@ References:
     (https://arxiv.org/abs/1511.05952)
   [3] Deep Reinforcement Learning with Double Q-learning 
     (https://arxiv.org/abs/1509.06461)
+  [4] Rainbow: Combining Improvements in Deep Reinforcement Learning
+    (https://arxiv.org/abs/1710.02298)
 """
 import gin
 import tensorflow as tf
@@ -98,16 +100,17 @@ class DQN(tf.Module):
         policy.
       final_exploration_iter: number of iterations along witch epsilon is 
         linearly anealed from its initial to its final value.
-      prioritization: exponent alpha that determines how much 
-        prioritization is used (0 corresponds to no prioritization) [2]. 
-        If None, defaults to 0.
+      prioritization: exponent that determines how much prioritization is
+        used on experience replay (alpha in [2]). If None, defaults to 0
+        (no priorization).
       priority_bias_compensation: importance sampling weights exponent 
         (beta in [2]) that determines how much the bias introduced by the
         non-uniform sample probabilities is compensated on the network
         updates.
-      double: whether to use Double DQN algorithm [3] for 
-        target Q values computation.
-      n_step: to perform n step updates. If None, defaults to 1.
+      double: whether to use Double DQN algorithm [3] for target Q values 
+        computation.
+      n_step: number of steps to use on the multi-step variant of DQN [4]. 
+        If None, defaults to 1 (stantard DQN).
       graph: whether collect and train methods should be trace-compiled
         into a graph (with tf.function wrapper).
       name: name of the agent.

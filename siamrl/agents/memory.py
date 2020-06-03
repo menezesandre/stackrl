@@ -1,6 +1,6 @@
 """
 References:
-  [2] The Gumbel-Max Trick for Discrete Distributions
+  [1] The Gumbel-Max Trick for Discrete Distributions
     (https://lips.cs.princeton.edu/the-gumbel-max-trick-for-discrete-distributions/)
 """
 import tensorflow as tf
@@ -29,10 +29,10 @@ class ReplayMemory(tf.Module):
       max_length: maximum number of transitions to be stored on memory 
         (will be truncated to be divisible by state_spec's batch size).
       alpha: exponent that determines how much prioritization is used 
-        (0 corresponds to no prioritization) [2]. If None, defaults to 0.
+        (0 corresponds to no prioritization). If None, defaults to 0.
       beta: importance sampling weights exponent that determines how much
         of the bias introduced by the non-uniform sample probabilities
-        is compensated by the weights.
+        is compensated by the weights. If None, defaults to 1.
       n_steps: number of steps advanced in a transition returned from 
         sample (i.e. next_state is this number of steps ahead of state). 
         If None, defaults to 1.
@@ -158,7 +158,7 @@ class ReplayMemory(tf.Module):
       InvalidArgumentError: if minibatch_size is larger than the number 
         of sampleable elements (given by len(self))
     """
-    # Sample without replacement using the Gumbel-max trick [2]
+    # Sample without replacement using the Gumbel-max trick [1]
     z = -tf.math.log(-tf.math.log(
       tf.random.uniform(self._logits.shape, seed=self._seed)
     ))
