@@ -3,9 +3,10 @@ from datetime import datetime
 import gin
 import numpy as np
 import tensorflow as tf
+
 from siamrl.nets import PseudoSiamFCN
 from siamrl.agents import DQN
-from siamrl.envs import make
+from siamrl.envs import make, assert_registered
 from siamrl.utils import Timer, AverageMetric, AverageReward
 
 @gin.configurable(module='siamrl')
@@ -26,13 +27,16 @@ class Training(object):
     log_interval=100,
     eval_interval=10000,
     checkpoint_interval=10000,
+    goal_check_interval=1000,
     memory_growth=True,
     seed=None
   ):
     """
     Args:
       env: Training environment. Either an instance of a gym Env or the id 
-        of the environment on the gym registry.
+        of the environment on the gym registry. Can also be a list of 
+        tuples with environment ids and reward goals to be used as 
+        curriculum.
       num_parallel_envs: number of environments to run in parallel. Only 
         used if env is not an Env instance. None defaults to 1.
       net: constructor for the Q network. Receives a (possibly nested) 
@@ -50,7 +54,10 @@ class Training(object):
       log_to_file: whether verbose is to be printed to a file or to stdout.
       log_interval: number of iterations between logs.
       eval_interval: number of iterations between policy evaluation.
-      checkpoint_interval: number of iterations between checkpoints
+      checkpoint_interval: number of iterations between checkpoints.
+      goal_check_interval: number of iterations between checks of 
+        goal completion (to move on to the next one on the curriculum).
+        Only used if env is a list with the curriculum.
       seed: for the random sequence of integers used to seed all of the 
         components (env, net, agent). (Note: if not provided, None is 
         explicitly passed as seed to the components, overriding any 
@@ -84,7 +91,42 @@ class Training(object):
     tf.random.set_seed(seed())
     np.random.seed(seed())
 
-    # Environment
+    # Set curriculum if provided
+    if isinstance(env, list):
+      self._curriculum_file = os.path.join(directory, 'curriculum.csv')
+      if os.path.isfile(self._curriculum_file):
+        _, achieved_goals = np.loadtxt(
+          self._curriculum_file,
+          delimiter=',',
+          skiprows=1,
+          unpack=True
+        )
+        achieved_goals = np.atleast_1d(achieved_goals)
+      else:
+        achieved_goals = []
+
+      self._curriculum = []
+      for eid, goal in env:
+        if goal in achieved_goals:
+          # If this goal was already achieved, skip this environment
+          continue
+        assert_registered(eid)
+        self._curriculum.insert(0, (eid, goal))
+      if self._curriculum:
+        env, self._current_goal = self._curriculum.pop()
+        self._complete = False
+      else:
+        # If all goals where previously achieved, continue training on last
+        # environment.
+        env, self._current_goal = env[-1]
+        self._complete = True
+
+      self._replace_eval_env = eval_env is None
+      self._goal_check_interval = int(goal_check_interval)
+    else:
+      self._goal_check_interval = None
+
+    # Set environment
     self._env = make(
       env, 
       n_parallel=num_parallel_envs, 
@@ -108,10 +150,10 @@ class Training(object):
     )
 
     # Train log
-    self._log_interval = log_interval
+    self._log_interval = int(log_interval)
     self._train_file = os.path.join(directory, 'train.csv')
     # Evaluation log
-    self._eval_interval = eval_interval
+    self._eval_interval = int(eval_interval)
     self._eval_file = os.path.join(directory, 'eval.csv')    
     
     # Metrics
@@ -137,7 +179,7 @@ class Training(object):
     )  
 
     # Train checkpoints
-    self._checkpoint_interval = checkpoint_interval
+    self._checkpoint_interval = int(checkpoint_interval)
     self._checkpoint = tf.train.Checkpoint(
       agent=self._agent,
       reward=self._reward
@@ -148,9 +190,6 @@ class Training(object):
       max_to_keep=1
     )
 
-    # To be used in subclasses
-    self._callback_interval = None
-    
     # Internal variables to avoid repeated operations
     self._last_checkpoint_iter = None
     self._last_save_iter = None
@@ -164,8 +203,8 @@ class Training(object):
 
   @property
   def reset_env(self):
-    """Set self._reset_env on a subclass to trigger an
-      environment reset on the training loop."""
+    """Set self._reset_env to trigger an environment reset on the 
+    training loop."""
     if hasattr(self, '_reset_env') and self._reset_env: # pylint: disable=access-member-before-definition
       self._reset_env = False
       return True
@@ -228,8 +267,19 @@ class Training(object):
 
   def run(
     self,
-    max_num_iterations=sys.maxsize
+    max_num_iterations=sys.maxsize,
+    stop_when_complete=False,
   ):
+    """
+    Args:
+      max_num_iterations: training stops after this number of iterations.
+      stop_when_complete: only used if training with curriculum. Whether
+        to stop training when last goal is achieved. If false, training 
+        will continue on last environment until max_num_iterations is 
+        reached.
+    """
+    self._stop_when_complete = stop_when_complete
+
     if not self._initialized:
       self.initialize()
     try:
@@ -254,19 +304,17 @@ class Training(object):
 
         if iters % self._log_interval == 0:
           self.log_train()
-        if iters % self._checkpoint_interval == 0:
-          self.checkpoint()
         if iters % self._eval_interval == 0:
           self.eval()
           if self._save_weights:
             self.save()
-        if self._callback_interval and iters % self._callback_interval == 0:
-          self._callback()
+        if self._goal_check_interval and iters % self._goal_check_interval == 0:
+          self.check_goal()
         if self.reset_env:
           step = self._env.reset()
           self._agent.acknowledge_reset()
-
-
+        if iters % self._checkpoint_interval == 0:
+          self.checkpoint()
     except:
       self.log_exception()    
     finally:
@@ -365,121 +413,33 @@ class Training(object):
     else:
       sys.stderr.write(error)
 
-  def _callback(self):
-    """To be implemented in subclasses for costum callbacks within run"""
-    raise NotImplementedError('No costum callback implemented.')
+  def check_goal(self):
+    if not self._complete and \
+      self._reward > self._current_goal*(1-self._agent.epsilon):
 
-# TODO merge CurriculumTraining with super (adding argument) 
-@gin.configurable(module='siamrl')
-class CurriculumTraining(Training):
-  """Extends Training class to implement a curriculum. A list of 
-  environment ids and reward goals is provided. The agent trains on each
-  environment until the train average reward reaches the goal. When
-  it happens, the environment is automatically replaced by the next one."""
-
-  def __init__(
-    self, 
-    env_ids,
-    curriculum_goals=None,
-    eval_env=None,
-    directory='.',
-    check_interval=1000,
-    **kwargs
-  ):
-    """
-    Args:
-      env_ids: forms the curriculum. Either a list of ids of registered gym
-        environments or a dict whose keys are the ids and values the reward
-        goal for each environment.
-      curriculum_goals: reward goals to be zipped with env_ids. Ignored if 
-        env_ids is a dict.
-      eval_env: id of a registered gym environment. If set, all
-        parts of the training are evaluated with this environment.
-        If None, each part is evaluated with an environment 
-        similar to training.
-      check_interval: number of iterations between checks of goal 
-        completion (to move on to the next one on the curriculum). Better 
-        if it is a common multiple of all environments' episode lengths
-        (number of steps per episode).
-    """
-    if isinstance(env_ids, dict):
-      self._curriculum = [(e, g) 
-        for e,g in zip(env_ids.keys(),env_ids.values())
-      ][::-1]
-    elif isinstance(env_ids, list):
-      self._curriculum = [(e, g) 
-        for e,g in zip(env_ids, curriculum_goals)
-      ][::-1] 
-    else:
-      raise TypeError(
-        'Invalid type {} for argument env_ids'.format(type(env_ids))
-      )
-
-    self._curriculum_file = os.path.join(directory, 'curriculum.csv')
-    if os.path.isfile(self._curriculum_file):
-      end_iter, goal = np.loadtxt(
-        self._curriculum_file,
-        delimiter=',',
-        skiprows=1,
-        unpack=True
-      )
-      if np.isscalar(goal):
-        env_id, self._current_goal = self._curriculum.pop()
-        if self._current_goal != goal:
-          self._curriculum.append((env_id, self._current_goal))
+      self.log('Goal reward achieved.')
+      if not os.path.isfile(self._curriculum_file):
+        line = 'EndIter,Goal\n'
       else:
-        for g in goal:
-          env_id, self._current_goal = self._curriculum.pop()
-          if self._current_goal != g:
-            self._curriculum.append((env_id, self._current_goal))
-            break
-      if len(self._curriculum) == 0:
+        line = ''
+      line += '{},{}\n'.format(self.iterations, self._current_goal)
+      with open(self._curriculum_file, 'a') as f:
+        f.write(line)
+      if not self._update_environment():
+        # If there is no environment left, set complete flag.
         self._complete = True
-      else:
-        self._complete = False
-        env_id, self._current_goal = self._curriculum.pop()
-    else:
-      self._complete = False
-      env_id, self._current_goal = self._curriculum.pop()
+    if self._complete and self._stop_when_complete:
+      raise StopIteration('Training goal achieved.')
 
-    self._replace_eval_env = eval_env is None
-
-    super(CurriculumTraining, self).__init__(
-      env_id, 
-      eval_env=eval_env,
-      directory=directory, 
-      **kwargs
-    )
-
-    self._reset_env = False
-    self._callback_interval = check_interval
-
-  @property
-  def epsilon(self):
-    return self._agent.epsilon
-
-  def run(
-    self,
-    max_num_iterations=sys.maxsize,
-    finish_when_complete=False
-  ):
-    """
-    Arg:
-      finish_when_complete: Whether to stop training when last goal is
-        achieved. If false, training will continue on last environment
-        until max_num_iterations is reached.
-    """
-    self._finish_when_complete = finish_when_complete
-    super(CurriculumTraining, self).run(
-      max_num_iterations=max_num_iterations
-    )
-    
   def _update_environment(self):
     """Replaces the environments with the next one in the curriculum.
     Raises:
       StopIteration: when curriculum is finished.
     """
-    env_id, self._current_goal = self._curriculum.pop()
+    if hasattr(self, '_curriculum') and self._curriculum:
+      env_id, self._current_goal = self._curriculum.pop()
+    else:
+      return False
 
     self.log('Updating environment...')
     n_parallel = self._env.batch_size if self._env.multiprocessing else None
@@ -512,22 +472,4 @@ class CurriculumTraining(Training):
     self.log('Done.')
     # Set flag to trigger environment reset on the training loop
     self._reset_env = True
-
-  def _callback(self):
-    if not self._complete and \
-      self._reward >= self._current_goal*(1-self.epsilon):
-
-      self.log('Goal reward achieved.')
-      if not os.path.isfile(self._curriculum_file):
-        line = 'EndIter,Goal\n'
-      else:
-        line = ''
-      line += '{},{}\n'.format(self.iterations, self._current_goal)
-      with open(self._curriculum_file, 'a') as f:
-        f.write(line)
-      try:
-        self._update_environment()
-      except StopIteration:
-        self._complete = True
-        if self._finish_when_complete:
-          raise StopIteration('Training goal achieved.')
+    return True

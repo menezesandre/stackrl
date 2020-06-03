@@ -34,7 +34,6 @@ def assert_registered(env_id, message=None):
   if not env_id in gym.envs.registry.env_specs:
     raise gym.error.UnregisteredEnv(message)
 
-
 def make(env, n_parallel=None, block=None, **kwargs):
   """
   Args:
@@ -197,10 +196,8 @@ class ParallelEnv(Env):
         for each of the parallel envs to make it unique.      
     """
     # Assert env is registered
-    if not env_id in gym.envs.registry.env_specs:
-      raise gym.error.UnregisteredEnv(
-        "No registered env with id: {}".format(env_id)
-      )
+    assert_registered(env_id)
+
     super(ParallelEnv, self).__init__(env_id, seed=seed, **kwargs)
     # Store arguments
     self._env_id = env_id
