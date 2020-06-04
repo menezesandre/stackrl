@@ -17,7 +17,7 @@ medfilt = False
 paths = []
 iter_key = 'Iter'
 target_keys = []
-default_target_keys = ['Loss', 'LTAvgReward']
+default_target_keys = ['Loss', 'Reward']
 if __name__=='__main__':
   argv = sys.argv[:0:-1]
   while argv:
@@ -105,7 +105,7 @@ if __name__=='__main__':
         skiprows=1,
         unpack=True
       )
-      end_iters = curriculum[0]
+      end_iters = np.atleast_1d(curriculum[0])
 
       split = [0]
       i = 0
