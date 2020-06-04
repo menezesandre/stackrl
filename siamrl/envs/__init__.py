@@ -1,6 +1,6 @@
 from siamrl.envs import data
 from siamrl.envs import stack
-from siamrl.envs.utils import make
+from siamrl.envs.utils import make, assert_registered
 
 # Register Stack-v0
 stack.register(
