@@ -226,7 +226,7 @@ class DQN(tf.Module):
     self._double = double
     self._seed = seed
 
-    # Wrap class methods in tf.function and trace with expected inputs
+    # Wrap class methods with tf.function
     if graph:
       reward_spec = tf.TensorSpec(
         shape=(collect_batch_size,), 
