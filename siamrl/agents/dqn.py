@@ -14,7 +14,6 @@ import tensorflow as tf
 from tensorflow import keras as k
 from siamrl.agents.policies import GreedyPolicy
 from siamrl.agents.memory import ReplayMemory
-# from siamrl.utils import FreezeDependencies
 
 optimizers = {
   'adadelta': k.optimizers.Adadelta,
@@ -26,19 +25,6 @@ optimizers = {
   'rmsprop': k.optimizers.RMSprop,
   'sgd': k.optimizers.SGD
 }
-losses = {
-  'huber': k.losses.Huber,
-  'mae': k.losses.MeanAbsoluteError,
-  'meanabsoluteerror': k.losses.MeanAbsoluteError,
-  'mse': k.losses.MeanSquaredError,
-  'meansquarederror': k.losses.MeanSquaredError,
-}
-
-# def get_state_and_action_spec(model):
-#   """Infers the environment's state and action from model's
-#   inputs and outputs.
-#   """
-#   state_spec = tf.nest.map_structure(lambda i: tf.TensorSpec())
 
 @gin.configurable(module='siamrl.agents')
 class DQN(tf.Module):
