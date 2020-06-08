@@ -1,5 +1,9 @@
 from setuptools import setup
-import os, sys, stat, glob
+import os
+import sys
+import glob
+
+from siamrl.version import __version__ as version
 
 with open('README.md', encoding='utf-8') as f:
   long_description = f.read()
@@ -8,7 +12,7 @@ REQUIRES = [
   'numpy', 
   'gym', 
   'pybullet',
-  'gin-config'
+  'gin-config',
 ]
 
 # Only add this requirement if tensorflow is not installed.
@@ -16,14 +20,14 @@ REQUIRES = [
 # project name (e.g. tf-nightly-gpu).
 try:
   import tensorflow as tf
-  assert eval(tf.__version__[:3]) >= 2
-except:
+  assert int(tf.__version__.split('.')[0]) >= 2 # pylint: disable=no-member
+except (ImportError, AssertionError):
   REQUIRES.insert(-2, 'tensorflow>=2.0.0')
 
 setup(
   name='siamrl',
-  version='2.0.a0523',
-  description='', #TODO
+  version=version,
+  description='Reinforcement learning with (pseudo) siamese networks.',
   long_description=long_description,
   long_description_content_type='text/markdown',
   url='https://github.com/atmenezes96/Siam-RL',
@@ -35,8 +39,8 @@ setup(
     'generator': ['trimesh'],
     'baselines': ['opencv-python'],
     'plot': ['matplotlib'],
-    'compat': ['tensorflow-probability==0.8.0','tf-agents==0.3.0']
-  }
+    'compat': ['tf-agents'],
+  },
 )
 
 # Install apps
@@ -46,10 +50,7 @@ for fname in glob.glob('apps/*.py'):
   with open(fname,'r') as f:
     lines = f.readlines()
     # Check if shebang is correct
-    if lines[0] == shebang:
-      write = False
-    else:
-      write = True
+    write = lines[0] != shebang
   # Overwrite file if necessary
   if write:
     if lines[0].startswith('#!'):
