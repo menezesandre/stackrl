@@ -108,7 +108,9 @@ class DQN(tf.Module):
     # Set Q network
     if isinstance(q_net, k.Model):
       self._q_net = q_net
-      self._target_q_net = k.models.clone_model(q_net)
+      # Use this name scope to avoid duplicate names in graph
+      with tf.name_scope('Target'):
+        self._target_q_net = k.models.clone_model(q_net)
       self._target_q_net.set_weights(q_net.get_weights())
     else:
       raise TypeError(
@@ -389,17 +391,12 @@ class DQN(tf.Module):
     if self._prioritized:
       self._replay_memory.update_priorities(indexes, td)
 
-    tf.cond(
-      self.iterations % self._target_update_period == 0,
-      true_fn=self._update_target,
-      false_fn=lambda: self._target_q_net.trainable_weights
-    )      
-    return loss, mtd
+    if self.iterations % self._target_update_period == 0:
+      # Update target network
+      for v,vt in zip(
+        self._q_net.trainable_weights, 
+        self._target_q_net.trainable_weights
+      ):
+        vt.assign(v)
 
-  def _update_target(self):
-    for v,vt in zip(
-      self._q_net.trainable_weights, 
-      self._target_q_net.trainable_weights
-    ):
-      vt.assign(v)
-    return self._target_q_net.trainable_weights
+    return loss, mtd

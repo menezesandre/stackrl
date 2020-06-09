@@ -1,6 +1,6 @@
 import inspect
 import tensorflow as tf
-import tensorflow.keras as k
+from tensorflow import keras as k
 import gin
 
 def correlation(*inputs, dtype=None):

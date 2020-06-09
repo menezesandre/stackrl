@@ -42,12 +42,13 @@ class GreedyPolicy(tf.keras.Model):
       raise ValueError(
         "model must have one output of rank 2 (including batch dimension)."
       )
-    inputs = _input_like(model)
-    outputs = tf.math.argmax(
-      model(inputs), 
-      axis=-1, 
-      output_type=output_type
-    )
+    with tf.name_scope(name):
+      inputs = _input_like(model)
+      outputs = tf.math.argmax(
+        model(inputs), 
+        axis=-1, 
+        output_type=output_type
+      )
     super(GreedyPolicy, self).__init__(
       inputs=inputs, 
       outputs=outputs, 
