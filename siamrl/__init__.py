@@ -4,4 +4,5 @@ from siamrl import agents
 from siamrl.baselines import Baseline
 from siamrl.train import Training
 from siamrl import external_configurables
-from siamrl.version import __version__
+
+__version__ = "1.0.0"

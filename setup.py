@@ -3,10 +3,24 @@ import os
 import sys
 import glob
 
-from siamrl.version import __version__ as version
+MAJOR_VERSION = 1
+MINOR_VERSION = 0
+PATCH_VERSION = 0
 
-with open('README.md', encoding='utf-8') as f:
-  long_description = f.read()
+version = '{}.{}.{}'.format(MAJOR_VERSION, MINOR_VERSION, PATCH_VERSION)
+
+# Set __version__ as a package attribute.
+init_file = './siamrl/__init__.py'
+with open(init_file) as f:
+  lines = f.readlines()
+if lines[-1].startswith('__version__'):
+  lines[-1] = '__version__ = "{}"\n'.format(version)
+  with open(init_file, 'w') as f:
+    for line in lines:
+      f.write(line)
+else:
+  with open(init_file, 'a') as f:
+    f.write('__version__ = "{}"\n'.format(version))
 
 REQUIRES = [
   'numpy', 
@@ -23,6 +37,9 @@ try:
   assert int(tf.__version__.split('.')[0]) >= 2 # pylint: disable=no-member
 except (ImportError, AssertionError):
   REQUIRES.insert(-2, 'tensorflow>=2.0.0')
+
+with open('README.md', encoding='utf-8') as f:
+  long_description = f.read()
 
 setup(
   name='siamrl',
