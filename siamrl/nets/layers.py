@@ -105,7 +105,8 @@ def sequential(
 def default_branch_layers(
   inputs, 
   kernel_initializer='he_uniform', 
-  dtype=None
+  dtype=None,
+  name_scope=None,
 ):
   """Aplies the default sequence of layers for the branches of the 
   PseudoSiamFCN
@@ -129,7 +130,8 @@ def default_branch_layers(
       (k.layers.UpSampling2D, {'size':4, 'interpolation':'bilinear'})
     ],
     kernel_initializer=kernel_initializer,
-    dtype=dtype
+    dtype=dtype,
+    name_scope=name_scope,
   )
 
 def default_pos_layers(
