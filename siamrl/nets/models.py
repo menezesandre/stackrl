@@ -73,7 +73,7 @@ class PseudoSiamFCN(tf.keras.Model):
       lambda i,l,n: l(
         i, 
         kernel_initializer=initializer,
-        name_scope='{}/{}'.format(name, n),
+        name_scope=n,
       ),
       x,
       (left_layers, right_layers),
@@ -84,7 +84,6 @@ class PseudoSiamFCN(tf.keras.Model):
     outputs = pos_layers(
       outputs, 
       kernel_initializer=initializer,
-      name_scope=name,
     )
     
     super(PseudoSiamFCN, self).__init__(

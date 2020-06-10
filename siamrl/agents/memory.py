@@ -111,7 +111,7 @@ class ReplayMemory(tf.Module):
   def max_length(self):
     return self._max_length.numpy()
 
-  @tf.Module.with_name_scope
+  # @tf.Module.with_name_scope
   def add(self, state, reward, terminal, action):
     """Stores transitions in the memory."""
     indexes = self._offsets + self._insert_index % self._max_length
@@ -140,7 +140,7 @@ class ReplayMemory(tf.Module):
 
     self._insert_index.assign_add(1)
 
-  @tf.Module.with_name_scope
+  # @tf.Module.with_name_scope
   def set_terminal(self):
     """Sets the latest transition added as terminal. (To be used when the
       environment is reset after a non terminal state.)"""
@@ -205,7 +205,7 @@ class ReplayMemory(tf.Module):
     else:
       return states, actions, rewards, next_states, terminal
 
-  @tf.Module.with_name_scope
+  # @tf.Module.with_name_scope
   def update_priorities(self, indexes, deltas):
     """
     Args:

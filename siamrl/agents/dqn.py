@@ -12,7 +12,7 @@ References:
 import gin
 import tensorflow as tf
 from tensorflow import keras as k
-from siamrl.agents.policies import GreedyPolicy, greedy_policy
+from siamrl.agents.policies import GreedyPolicy
 from siamrl.agents.memory import ReplayMemory
 
 optimizers = {
@@ -195,7 +195,7 @@ class DQN(tf.Module):
     )
     self._n_actions = q_net.output_shape[-1]
     # Set policy
-    self.policy = greedy_policy(q_net, graph=graph)
+    self.policy = GreedyPolicy(q_net)
     # Set prioritization
     prioritization = prioritization or 0.
     self._prioritized = prioritization > 0.
@@ -239,8 +239,8 @@ class DQN(tf.Module):
       )
       action_spec = tf.TensorSpec(
         shape=(collect_batch_size,),
-        # dtype=self.policy.output.dtype,
-        dtype=tf.int64,
+        dtype=self.policy.output.dtype,
+        # dtype=tf.int64,
       )
       self.observe = tf.function(
         self.observe,
@@ -316,8 +316,8 @@ class DQN(tf.Module):
       tf.random.uniform(
         batch_size, 
         maxval=self._n_actions, 
-        # dtype=self.policy.output.dtype,
-        dtype=tf.int64,
+        dtype=self.policy.output.dtype,
+        # dtype=tf.int64,
         seed=self._seed,
       )
     )
