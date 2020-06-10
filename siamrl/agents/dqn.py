@@ -12,7 +12,7 @@ References:
 import gin
 import tensorflow as tf
 from tensorflow import keras as k
-from siamrl.agents.policies import GreedyPolicy
+from siamrl.agents.policies import GreedyPolicy, greedy_policy
 from siamrl.agents.memory import ReplayMemory
 
 optimizers = {
@@ -109,8 +109,7 @@ class DQN(tf.Module):
     if isinstance(q_net, k.Model):
       self._q_net = q_net
       # Use this name scope to avoid duplicate names in graph
-      with tf.name_scope('Target'):
-        self._target_q_net = k.models.clone_model(q_net)
+      self._target_q_net = k.models.clone_model(q_net)
       self._target_q_net.set_weights(q_net.get_weights())
     else:
       raise TypeError(
@@ -196,7 +195,7 @@ class DQN(tf.Module):
     )
     self._n_actions = q_net.output_shape[-1]
     # Set policy
-    self.policy = GreedyPolicy(q_net)
+    self.policy = greedy_policy(q_net, graph=graph)
     # Set prioritization
     prioritization = prioritization or 0.
     self._prioritized = prioritization > 0.
@@ -239,8 +238,9 @@ class DQN(tf.Module):
         dtype=tf.bool
       )
       action_spec = tf.TensorSpec(
-        shape=(collect_batch_size,), 
-        dtype=self.policy.output.dtype
+        shape=(collect_batch_size,),
+        # dtype=self.policy.output.dtype,
+        dtype=tf.int64,
       )
       self.observe = tf.function(
         self.observe,
@@ -316,8 +316,9 @@ class DQN(tf.Module):
       tf.random.uniform(
         batch_size, 
         maxval=self._n_actions, 
-        dtype=self.policy.output.dtype,
-        seed=self._seed
+        # dtype=self.policy.output.dtype,
+        dtype=tf.int64,
+        seed=self._seed,
       )
     )
     self._replay_memory.add(state, reward, terminal, action)

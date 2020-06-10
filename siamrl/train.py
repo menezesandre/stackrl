@@ -1,5 +1,9 @@
-import os, sys, time, traceback, random
+import os
+import sys
+import traceback
+import random
 from datetime import datetime
+
 import gin
 import numpy as np
 import tensorflow as tf
@@ -8,6 +12,8 @@ from siamrl.nets import PseudoSiamFCN
 from siamrl.agents import DQN
 from siamrl.envs import make, assert_registered
 from siamrl.utils import Timer, AverageMetric, AverageReward
+
+__all__ = ['Training']
 
 @gin.configurable(module='siamrl')
 class Training(object):
@@ -293,7 +299,7 @@ class Training(object):
           self._reward += step
           action = self._agent.collect(*step)
           step = self._env.step(action)
-        
+
         # Train on the sampled batch
         with self._train_timer:
           loss, merr = self._agent.train()

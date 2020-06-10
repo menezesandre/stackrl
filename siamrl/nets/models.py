@@ -53,32 +53,40 @@ class PseudoSiamFCN(tf.keras.Model):
       i if isinstance(i, tf.TensorSpec) else tf.TensorSpec(shape=i) \
         for i in input_spec
     )
-    with tf.name_scope(name):
-      # Set input
-      inputs = tf.nest.map_structure(
-        lambda i: tf.keras.Input(i.shape.with_rank(3), dtype=i.dtype),
-        input_spec
-      )
-      x = tf.nest.map_structure(
-        lambda i: i if i.dtype.is_floating else i/i.dtype.max,
-        inputs
-      )
-      # Set initializer according to seed  
-      if seed is not None:
-        initializer = tf.keras.initializers.he_uniform(seed=seed)
-      else:
-        initializer = 'he_uniform'
-      # Aply the layers before correlation
-      right_layers = right_layers or left_layers
-      x = tf.nest.map_structure(
-        lambda i,l: l(i, kernel_initializer=initializer),
-        x,
-        (left_layers, right_layers)
-      )
+    # Set input
+    inputs = tf.nest.map_structure(
+      lambda i: tf.keras.Input(i.shape.with_rank(3), dtype=i.dtype),
+      input_spec
+    )
+    x = tf.nest.map_structure(
+      lambda i: i if i.dtype.is_floating else i/i.dtype.max,
+      inputs
+    )
+    # Set initializer according to seed  
+    if seed is not None:
+      initializer = tf.keras.initializers.he_uniform(seed=seed)
+    else:
+      initializer = 'he_uniform'
+    # Aply the layers before correlation
+    right_layers = right_layers or left_layers
+    x = tf.nest.map_structure(
+      lambda i,l,n: l(
+        i, 
+        kernel_initializer=initializer,
+        name_scope='{}/{}'.format(name, n),
+      ),
+      x,
+      (left_layers, right_layers),
+      ('Left', 'Right'),
+    )
 
-      outputs = layers.correlation(*x)
-      outputs = pos_layers(outputs, kernel_initializer=initializer)
-      
+    outputs = layers.correlation(*x)
+    outputs = pos_layers(
+      outputs, 
+      kernel_initializer=initializer,
+      name_scope=name,
+    )
+    
     super(PseudoSiamFCN, self).__init__(
       inputs=inputs, 
       outputs=outputs, 

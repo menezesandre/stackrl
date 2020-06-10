@@ -111,6 +111,7 @@ class ReplayMemory(tf.Module):
   def max_length(self):
     return self._max_length.numpy()
 
+  @tf.Module.with_name_scope
   def add(self, state, reward, terminal, action):
     """Stores transitions in the memory."""
     indexes = self._offsets + self._insert_index % self._max_length
@@ -139,12 +140,14 @@ class ReplayMemory(tf.Module):
 
     self._insert_index.assign_add(1)
 
+  @tf.Module.with_name_scope
   def set_terminal(self):
     """Sets the latest transition added as terminal. (To be used when the
       environment is reset after a non terminal state.)"""
     indexes = self._offsets + (self._insert_index-1) % self._max_length
     self._terminal.scatter_nd_update(indexes,[True]*self._n_parts) 
 
+  # @tf.Module.with_name_scope
   def sample(self, minibatch_size, get_weights=False):
     """Samples transitions from memory.
     Args:
@@ -202,6 +205,50 @@ class ReplayMemory(tf.Module):
     else:
       return states, actions, rewards, next_states, terminal
 
+  @tf.Module.with_name_scope
+  def update_priorities(self, indexes, deltas):
+    """
+    Args:
+      indexes: where to update the priorities, as returned by sample.
+      deltas: error obtained on each transition on last update.
+    """
+    logits = tf.math.log(tf.math.pow(deltas+self.epsilon, self._alpha))
+    # Update logits
+    self._logits.scatter_nd_update(
+      tf.expand_dims(indexes,-1), 
+      logits      
+    )
+    # Update max logit if necessary
+    argmax = tf.math.argmax(logits)
+    max_index = indexes[argmax]
+    max_logit = logits[argmax]
+    if max_logit>=self._max_logit:
+      self._max_logit_index.assign(max_index)
+      self._max_logit.assign(max_logit)  
+    elif tf.reduce_any(max_index==indexes):
+      index = tf.math.argmax(self._logits, output_type=tf.int32)
+      self._max_logit_index.assign(index)
+      self._max_logit.assign(self._logits[index])
+    # Update min logit if necessary
+    argmin = tf.math.argmin(logits)
+    min_index = indexes[argmin]
+    min_logit = logits[argmin]
+    if min_logit<=self._min_logit:
+      self._min_logit_index.assign(min_index)
+      self._min_logit.assign(min_logit)
+    elif tf.reduce_any(self._min_logit_index==indexes):
+      masked_logits = self._logits*tf.cast(
+        tf.logical_not(tf.math.is_inf(self._logits)),
+        dtype=tf.float32
+      )
+      index = tf.math.argmin(masked_logits, output_type=tf.int32)
+      value = tf.debugging.assert_all_finite(
+        masked_logits[index],
+        "No sampleable transition (failed to compute min logit)"
+      )
+      self._min_logit_index.assign(index)
+      self._min_logit.assign(value)
+
   def dataset(self, minibatch_size, get_weights=False):
     """Returns a tf.data.Dataset instance constructed from a generator 
       that yields the results of sampling minibatch_size transitions from
@@ -246,46 +293,3 @@ class ReplayMemory(tf.Module):
       output_types=output_types,
       output_shapes=output_shapes
     )
-
-  def update_priorities(self, indexes, deltas):
-    """
-    Args:
-      indexes: where to update the priorities, as returned by sample.
-      deltas: error obtained on each transition on last update.
-    """
-    logits = tf.math.log(tf.math.pow(deltas+self.epsilon, self._alpha))
-    # Update logits
-    self._logits.scatter_nd_update(
-      tf.expand_dims(indexes,-1), 
-      logits      
-    )
-    # Update max logit if necessary
-    argmax = tf.math.argmax(logits)
-    max_index = indexes[argmax]
-    max_logit = logits[argmax]
-    if max_logit>=self._max_logit:
-      self._max_logit_index.assign(max_index)
-      self._max_logit.assign(max_logit)  
-    elif tf.reduce_any(max_index==indexes):
-      index = tf.math.argmax(self._logits, output_type=tf.int32)
-      self._max_logit_index.assign(index)
-      self._max_logit.assign(self._logits[index])
-    # Update min logit if necessary
-    argmin = tf.math.argmin(logits)
-    min_index = indexes[argmin]
-    min_logit = logits[argmin]
-    if min_logit<=self._min_logit:
-      self._min_logit_index.assign(min_index)
-      self._min_logit.assign(min_logit)
-    elif tf.reduce_any(self._min_logit_index==indexes):
-      masked_logits = self._logits*tf.cast(
-        tf.logical_not(tf.math.is_inf(self._logits)),
-        dtype=tf.float32
-      )
-      index = tf.math.argmin(masked_logits, output_type=tf.int32)
-      value = tf.debugging.assert_all_finite(
-        masked_logits[index],
-        "No sampleable transition (failed to compute min logit)"
-      )
-      self._min_logit_index.assign(index)
-      self._min_logit.assign(value)

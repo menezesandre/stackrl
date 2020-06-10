@@ -1,4 +1,5 @@
 import inspect
+import collections
 import tensorflow as tf
 from tensorflow import keras as k
 import gin
@@ -19,7 +20,8 @@ def sequential(
   inputs, 
   layers, 
   kernel_initializer='he_uniform', 
-  dtype=None
+  dtype=None,
+  name_scope=None,
 ):
   """Aplies a sequence of layers
   Args:
@@ -34,6 +36,10 @@ def sequential(
       seed, to get reproducible results.)
     dtype: data type of the layers. If None, default layer's dtype is 
       used.
+    name_scope: layers are instantiated with names prefixed with this 
+      scope. Note: if provided, layer's names are made unique within 
+      this function, but not globaly (i.e. collisions may happen if 
+      this scope is used elsewhere).
   Returns:
     The output tensor
   Raises:
@@ -44,14 +50,15 @@ def sequential(
   """
   # Validate layers argument
   for i, l in enumerate(layers):
+    # TODO() relax requirement of being a keras Layer
     if isinstance(l, tuple):
-      if len(l) >= 2 and callable(l[0]) and isinstance(l[1], dict):
+      if len(l) >= 2 and issubclass(l[0], k.layers.Layer) and isinstance(l[1], dict):
         continue
-      elif len(l) == 1 and callable(l[0]):
+      elif len(l) == 1 and issubclass(l[0], k.layers.Layer):
         layers[i] = (l[0], {})
         continue
     else:
-      if callable(l):
+      if issubclass(l, k.layers.Layer):
         layers[i] = (l, {})
         continue
     raise ValueError(
@@ -61,17 +68,38 @@ def sequential(
       )
     )
 
+  if name_scope:
+    name_counts = collections.defaultdict(lambda: 0)
+
   x = inputs
   for layer,kwargs in layers:
+    # Set layer name
+    if 'name' in kwargs:
+      name = kwargs.pop('name')
+    else:
+      name = None
+    if name_scope:
+      name = name or layer.__name__.lower()
+      nid = name_counts[name]
+      name_counts[name] += 1
+      if nid > 0:
+        name += '_{}'.format(nid)
+      name = '{}/{}'.format(name_scope, name)
+
     args,_,_,_ = inspect.getargspec(layer)
     if 'kernel_initializer' in args and 'kernel_initializer' not in kwargs:
       x = layer(
         **kwargs, 
         kernel_initializer=kernel_initializer, 
-        dtype=dtype
+        dtype=dtype,
+        name=name,
       )(x)
     else:
-      x = layer(**kwargs, dtype=dtype)(x)
+      x = layer(
+        **kwargs, 
+        dtype=dtype,
+        name=name,
+      )(x)
   return x
 
 def default_branch_layers(
@@ -107,7 +135,8 @@ def default_branch_layers(
 def default_pos_layers(
   inputs, 
   kernel_initializer='he_uniform',
-  dtype=tf.float32
+  dtype=tf.float32,
+  name_scope=None,
 ):
   """Aplies the default sequence of layers after the correlation for the
   PseudoSiamFCN.
@@ -127,5 +156,6 @@ def default_pos_layers(
       (k.layers.Flatten, {})
     ],
     kernel_initializer=kernel_initializer,
-    dtype=dtype
+    dtype=dtype,
+    name_scope=name_scope,
   )
