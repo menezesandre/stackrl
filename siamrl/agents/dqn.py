@@ -14,7 +14,6 @@ import tensorflow as tf
 from tensorflow import keras as k
 from siamrl.agents.policies import GreedyPolicy
 from siamrl.agents.memory import ReplayMemory
-# from siamrl.utils import FreezeDependencies
 
 optimizers = {
   'adadelta': k.optimizers.Adadelta,
@@ -26,19 +25,6 @@ optimizers = {
   'rmsprop': k.optimizers.RMSprop,
   'sgd': k.optimizers.SGD
 }
-losses = {
-  'huber': k.losses.Huber,
-  'mae': k.losses.MeanAbsoluteError,
-  'meanabsoluteerror': k.losses.MeanAbsoluteError,
-  'mse': k.losses.MeanSquaredError,
-  'meansquarederror': k.losses.MeanSquaredError,
-}
-
-# def get_state_and_action_spec(model):
-#   """Infers the environment's state and action from model's
-#   inputs and outputs.
-#   """
-#   state_spec = tf.nest.map_structure(lambda i: tf.TensorSpec())
 
 @gin.configurable(module='siamrl.agents')
 class DQN(tf.Module):
@@ -124,6 +110,10 @@ class DQN(tf.Module):
       self._q_net = q_net
       self._target_q_net = k.models.clone_model(q_net)
       self._target_q_net.set_weights(q_net.get_weights())
+      # TODO find a cleaner way of creating a cloned model
+      # with a different name (to avoid colisions in graph
+      # visualization) 
+      self._target_q_net._name += '_target'
     else:
       raise TypeError(
         "Invalid type {} for argument q_net. Must be a keras Model."
@@ -240,7 +230,7 @@ class DQN(tf.Module):
     self._double = double
     self._seed = seed
 
-    # Wrap class methods in tf.function and trace with expected inputs
+    # Wrap class methods with tf.function
     if graph:
       reward_spec = tf.TensorSpec(
         shape=(collect_batch_size,), 
@@ -251,8 +241,9 @@ class DQN(tf.Module):
         dtype=tf.bool
       )
       action_spec = tf.TensorSpec(
-        shape=(collect_batch_size,), 
-        dtype=self.policy.output.dtype
+        shape=(collect_batch_size,),
+        dtype=self.policy.output.dtype,
+        # dtype=tf.int64,
       )
       self.observe = tf.function(
         self.observe,
@@ -274,7 +265,10 @@ class DQN(tf.Module):
       self.train = tf.function(self.train, input_signature=[])
 
   def __del__(self):
-    del(self._replay_memory_iter)
+    try:
+      del(self._replay_memory_iter)
+    except:
+      pass
     super(DQN, self).__del__()
 
   def __call__(self, state, reward, terminal, action=None):
@@ -329,7 +323,8 @@ class DQN(tf.Module):
         batch_size, 
         maxval=self._n_actions, 
         dtype=self.policy.output.dtype,
-        seed=self._seed
+        # dtype=tf.int64,
+        seed=self._seed,
       )
     )
     self._replay_memory.add(state, reward, terminal, action)
@@ -403,17 +398,12 @@ class DQN(tf.Module):
     if self._prioritized:
       self._replay_memory.update_priorities(indexes, td)
 
-    tf.cond(
-      self.iterations % self._target_update_period == 0,
-      true_fn=self._update_target,
-      false_fn=lambda: self._target_q_net.trainable_weights
-    )      
-    return loss, mtd
+    if self.iterations % self._target_update_period == 0:
+      # Update target network
+      for v,vt in zip(
+        self._q_net.trainable_weights, 
+        self._target_q_net.trainable_weights
+      ):
+        vt.assign(v)
 
-  def _update_target(self):
-    for v,vt in zip(
-      self._q_net.trainable_weights, 
-      self._target_q_net.trainable_weights
-    ):
-      vt.assign(v)
-    return self._target_q_net.trainable_weights
+    return loss, mtd

@@ -1,5 +1,30 @@
 import tensorflow as tf
 
+def greedy_policy(model, output_type=tf.int64, graph=True):
+  if not isinstance(model, tf.keras.Model):
+    raise TypeError(
+      "Invalid type {} for argument model. Must be a keras Model.".format(type(model))
+    )
+
+  def policy(inputs):
+    return tf.math.argmax(
+      model(inputs), 
+      axis=-1, 
+      output_type=output_type,
+    )
+
+  if graph:
+    input_spec = tf.nest.map_structure(
+      lambda x: tf.TensorSpec(
+        shape=x.shape, 
+        dtype=x.dtype
+      ), 
+      model.input
+    )
+    policy = tf.function(policy, input_signature=[input_spec])
+
+  return policy
+
 def _input_like(model):
   """
   Args:
@@ -12,7 +37,7 @@ def _input_like(model):
   """
   if not isinstance(model, tf.keras.Model):
     raise TypeError(
-      "Invalid type {} for argument model. Must be a keras Model."
+      "Invalid type {} for argument model. Must be a keras Model.".format(type(model))
     )
 
   return tf.nest.map_structure(
