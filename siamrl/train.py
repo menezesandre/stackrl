@@ -275,6 +275,7 @@ class Training(object):
     self,
     max_num_iterations=sys.maxsize,
     stop_when_complete=False,
+    tensorboard_log=False,
   ):
     """
     Args:
@@ -283,35 +284,75 @@ class Training(object):
         to stop training when last goal is achieved. If false, training 
         will continue on last environment until max_num_iterations is 
         reached.
+      tensorboard_log: whether to make logs to be vizualized in tensorboard.
     """
     self._stop_when_complete = stop_when_complete
 
     if not self._initialized:
       self.initialize()
+    if tensorboard_log:
+      # Set writer
+      logdir = os.path.join(
+        os.path.dirname(self._train_file),
+        'logdir',
+        datetime.now().strftime('%Y%m%d-%H%M%S'),
+      )
+      writer = tf.summary.create_file_writer(logdir)
+      # Set agent's iterations as default step
+      tf.summary.experimental.set_step(self._agent.iterations)
+      # Log first evaluation
+      with writer.as_default():
+        tf.summary.scalar('eval', self._eval_reward.result)
     try:
       step = self._env.reset()
       self._agent.acknowledge_reset()
-      for _ in range(max_num_iterations):
+
+      for i in range(max_num_iterations):
         # Colect experience
         with self._collect_timer:
           if callable(step):
             step = step() # pylint: disable=not-callable
           self._reward += step
+          if tensorboard_log and i == 1:
+            tf.summary.trace_on(graph=True, profiler=True)
           action = self._agent.collect(*step)
+          if tensorboard_log and i == 1:
+            with writer.as_default():
+              tf.summary.trace_export(
+                'collect', 
+                profiler_outdir=os.path.join(logdir, 'collect'),
+              )
           step = self._env.step(action)
 
         # Train on the sampled batch
         with self._train_timer:
+          if tensorboard_log and i == 1:
+            tf.summary.trace_on(graph=True, profiler=True)
           loss, merr = self._agent.train()
+          if tensorboard_log and i == 1:
+            with writer.as_default():
+              tf.summary.trace_export(
+                'train',
+                profiler_outdir=os.path.join(logdir, 'train'),
+              )
+
           self._loss += loss
           self._mean_error += merr
 
         iters = self.iterations
 
         if iters % self._log_interval == 0:
+          if tensorboard_log:
+            with writer.as_default():
+              tf.summary.scalar('reward', self._reward.result)
+              tf.summary.scalar('loss', self._loss.result)
+              tf.summary.scalar('mean_error', self._mean_error.result)
           self.log_train()
         if iters % self._eval_interval == 0:
           self.eval()
+          if tensorboard_log:
+            with writer.as_default():
+              tf.summary.scalar('eval', self._eval_reward.result)
           if self._save_weights:
             self.save()
         if self._goal_check_interval and iters % self._goal_check_interval == 0:
