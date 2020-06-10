@@ -108,9 +108,12 @@ class DQN(tf.Module):
     # Set Q network
     if isinstance(q_net, k.Model):
       self._q_net = q_net
-      # Use this name scope to avoid duplicate names in graph
       self._target_q_net = k.models.clone_model(q_net)
       self._target_q_net.set_weights(q_net.get_weights())
+      # TODO find a cleaner way of creating a cloned model
+      # with a different name (to avoid colisions in graph
+      # visualization) 
+      self._target_q_net._name += '_target'
     else:
       raise TypeError(
         "Invalid type {} for argument q_net. Must be a keras Model."
