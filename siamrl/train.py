@@ -303,6 +303,8 @@ class Training(object):
       # Log first evaluation
       with writer.as_default():
         tf.summary.scalar('eval', self._eval_reward.result)
+      # Check if tf.profiler exists
+      profiler = hasattr(tf, 'profiler')
     try:
       step = self._env.reset()
       self._agent.acknowledge_reset()
@@ -314,26 +316,38 @@ class Training(object):
             step = step() # pylint: disable=not-callable
           self._reward += step
           if tensorboard_log and i == 1:
-            tf.summary.trace_on(graph=True, profiler=True)
+            profiler_outdir=os.path.join(logdir, 'collect')
+            if profiler:
+              tf.profiler.experimental.start(profiler_outdir)
+            tf.summary.trace_on(graph=True, profiler=not profiler)
           action = self._agent.collect(*step)
           if tensorboard_log and i == 1:
+            if profiler:
+              tf.profiler.experimental.stop()
+              profiler_outdir=None
             with writer.as_default():
               tf.summary.trace_export(
                 'collect', 
-                profiler_outdir=os.path.join(logdir, 'collect'),
+                profiler_outdir=profiler_outdir,
               )
           step = self._env.step(action)
 
         # Train on the sampled batch
         with self._train_timer:
           if tensorboard_log and i == 1:
-            tf.summary.trace_on(graph=True, profiler=True)
+            profiler_outdir = os.path.join(logdir, 'train')
+            if profiler:
+              tf.profiler.experimental.start(profiler_outdir)
+            tf.summary.trace_on(graph=True, profiler=not profiler)
           loss, merr = self._agent.train()
           if tensorboard_log and i == 1:
+            if profiler:
+              tf.profiler.experimental.stop()
+              profiler_outdir=None
             with writer.as_default():
               tf.summary.trace_export(
                 'train',
-                profiler_outdir=os.path.join(logdir, 'train'),
+                profiler_outdir=profiler_outdir,
               )
 
           self._loss += loss

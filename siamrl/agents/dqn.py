@@ -265,7 +265,10 @@ class DQN(tf.Module):
       self.train = tf.function(self.train, input_signature=[])
 
   def __del__(self):
-    del(self._replay_memory_iter)
+    try:
+      del(self._replay_memory_iter)
+    except:
+      pass
     super(DQN, self).__del__()
 
   def __call__(self, state, reward, terminal, action=None):
