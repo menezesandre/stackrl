@@ -281,8 +281,8 @@ class DQN(tf.Module):
   def epsilon(self):
     if self._epsilon_anealing:
       return self._epsilon + self._delta_epsilon*tf.minimum(
-        1., 
-        tf.cast(self.iterations)/self._final_epsilon_anealing_iter
+        1.,
+        tf.cast(self.iterations, dtype=tf.float32)/self._final_epsilon_anealing_iter
       )
     else:
       return self._epsilon
