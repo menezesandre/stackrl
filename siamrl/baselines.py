@@ -14,8 +14,8 @@ def _trimmed_goal(observation):
 
 def random(observation, flat=True):
   return np.random.rand(
-    observation[0].shape[0]-observation[1].shape[0],
-    observation[0].shape[1]-observation[1].shape[1]
+    observation[0].shape[0]-observation[1].shape[0]+1,
+    observation[0].shape[1]-observation[1].shape[1]+1
   )
 
 try:

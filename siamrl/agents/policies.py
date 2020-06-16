@@ -54,13 +54,16 @@ class GreedyPolicy(tf.keras.Model):
   def __init__(
     self, 
     model,
-    output_type=tf.int64, 
-    name='GreedyPolicy'
+    output_type=tf.int64,
+    debug=False,
+    name='GreedyPolicy',
   ):
     """
     Args:
       model: estimator of the value/probability of actions.
-      output_type: dtype of the model's output (int32 or int64)
+      output_type: dtype of the model's output (int32 or int64).
+      debug: if True, the policy model also returns the values,
+        as returned by model.
       name: name of the policy model.
     """
     if len(model.outputs) > 1 or len(model.output_shape) != 2:
@@ -68,11 +71,14 @@ class GreedyPolicy(tf.keras.Model):
         "model must have one output of rank 2 (including batch dimension)."
       )
     inputs = _input_like(model)
+    values = model(inputs)  
     outputs = tf.math.argmax(
-      model(inputs), 
+      values,
       axis=-1, 
       output_type=output_type
     )
+    if debug:
+      outputs = (outputs, values)
     super(GreedyPolicy, self).__init__(
       inputs=inputs, 
       outputs=outputs, 
