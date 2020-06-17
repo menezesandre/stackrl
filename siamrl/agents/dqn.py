@@ -352,13 +352,12 @@ class DQN(tf.Module):
       # Compute target Q values
       target_q_values = self._target_q_net(next_states)
       if self._double:
-        target_q_values = tf.map_fn(
-          lambda i: i[0][i[1]],
-          (
-            target_q_values, 
-            self.policy(next_states)
+        target_q_values = tf.reduce_sum(
+          target_q_values*tf.one_hot(
+            self.policy(next_states), 
+            self._n_actions
           ),
-          dtype=q_values.dtype
+          axis=-1,
         )
       else:
         target_q_values = tf.reduce_max(
