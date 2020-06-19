@@ -12,11 +12,10 @@ ec(k.layers.ConvLSTM2D, module='tf.keras.layers')
 ec(k.layers.DepthwiseConv2D, module='tf.keras.layers')
 ec(k.layers.Dropout, module='tf.keras.layers')
 ec(k.layers.Flatten, module='tf.keras.layers')
+ec(k.layers.LayerNormalization, module='tf.keras.layers')
 ec(k.layers.MaxPool2D, module='tf.keras.layers')
 ec(k.layers.SeparableConv2D, module='tf.keras.layers')
 ec(k.layers.UpSampling2D, module='tf.keras.layers')
-ec(k.layers.LayerNormalization, module='tf.keras.layers')
-ec(k.layers.BatchNormalization, module='tf.keras.layers')
 
 # Optimizers
 ec(k.optimizers.Adadelta, module='tf.keras.optimizers')
