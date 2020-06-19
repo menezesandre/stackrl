@@ -48,6 +48,7 @@ class DQN(tf.Module):
     priority_bias_compensation=None,
     double=False,
     n_step=None,
+    normalize=False,
     graph=True,
     seed=None,
     name='DQN'
@@ -97,6 +98,7 @@ class DQN(tf.Module):
         computation.
       n_step: number of steps to use on the multi-step variant of DQN [4]. 
         If None, defaults to 1 (stantard DQN).
+      normalize: whether to normalize the targets of the temporal difference.
       graph: whether collect and train methods should be trace-compiled
         into a graph (with tf.function wrapper).
       name: name of the agent.
@@ -228,6 +230,11 @@ class DQN(tf.Module):
     self._replay_memory_iter = self._no_dependency(iter(dataset))
 
     self._double = double
+
+    self._normalize = normalize
+    if self._normalize:
+      self._normalizer = k.layers.BatchNormalization(renorm=True)    
+
     self._seed = seed
 
     # Wrap class methods with tf.function
@@ -359,6 +366,14 @@ class DQN(tf.Module):
           ),
           axis=-1,
         )
+        # target_q_values = tf.map_fn(
+        #   lambda i: i[0][i[1]],
+        #   (
+        #     target_q_values, 
+        #     self.policy(next_states)
+        #   ),
+        #   dtype=q_values.dtype
+        # )
       else:
         target_q_values = tf.reduce_max(
           target_q_values,
@@ -374,8 +389,10 @@ class DQN(tf.Module):
         0., 
         self._gamma*target_q_values
       )
+      # Normalize targets
+      if self._normalize:
+        target_q_values = self._normalizer(target_q_values, training=True)
       # Compute temporal difference error
-      # td = tf.abs(q_values - tf.stop_gradient(target_q_values))
       td = q_values - tf.stop_gradient(target_q_values)
       mtd = tf.reduce_mean(td)
       td = tf.abs(td)
