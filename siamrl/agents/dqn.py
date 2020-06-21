@@ -48,7 +48,6 @@ class DQN(tf.Module):
     priority_bias_compensation=None,
     double=False,
     n_step=None,
-    normalize=False,
     graph=True,
     seed=None,
     name='DQN'
@@ -98,7 +97,6 @@ class DQN(tf.Module):
         computation.
       n_step: number of steps to use on the multi-step variant of DQN [4]. 
         If None, defaults to 1 (stantard DQN).
-      normalize: whether to normalize the targets of the temporal difference.
       graph: whether collect and train methods should be trace-compiled
         into a graph (with tf.function wrapper).
       name: name of the agent.
@@ -231,10 +229,6 @@ class DQN(tf.Module):
 
     self._double = double
 
-    self._normalize = normalize
-    if self._normalize:
-      self._normalizer = k.layers.BatchNormalization(renorm=True)    
-
     self._seed = seed
 
     # Wrap class methods with tf.function
@@ -349,13 +343,20 @@ class DQN(tf.Module):
         # self._replay_memory.sample(self._minibatch_size)
 
     with tf.GradientTape() as tape:
-      # Compute Q values
+      # Compute Q values for the given actions
       q_values = self._q_net(states)
-      q_values = tf.map_fn(
-        lambda i: i[0][i[1]],
-        (q_values, actions),
-        dtype=q_values.dtype
+      q_values = tf.reduce_sum(
+        q_values*tf.one_hot(
+          actions, 
+          self._n_actions
+        ),
+        axis=-1,
       )
+      # q_values = tf.map_fn(
+      #   lambda i: i[0][i[1]],
+      #   (q_values, actions),
+      #   dtype=q_values.dtype
+      # )
       # Compute target Q values
       target_q_values = self._target_q_net(next_states)
       if self._double:
@@ -389,9 +390,6 @@ class DQN(tf.Module):
         0., 
         self._gamma*target_q_values
       )
-      # Normalize targets
-      if self._normalize:
-        target_q_values = self._normalizer(target_q_values, training=True)
       # Compute temporal difference error
       td = q_values - tf.stop_gradient(target_q_values)
       mtd = tf.reduce_mean(td)
