@@ -39,7 +39,7 @@ class DQN(tf.Module):
     replay_memory_size=100000,
     prefetch=None,
     target_update_period=10000,
-    discount_factor=1.,
+    discount_factor=.99,
     collect_batch_size=None,
     exploration=0.1,
     final_exploration=None,
