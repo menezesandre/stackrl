@@ -2,6 +2,8 @@
 References:
   [1](https://arxiv.org/abs/1606.09549)
 """
+import random
+
 import gin
 import tensorflow as tf
 from siamrl.nets import layers
@@ -62,28 +64,32 @@ class PseudoSiamFCN(tf.keras.Model):
       lambda i: i if i.dtype.is_floating else i/i.dtype.max,
       inputs
     )
-    # Set initializer according to seed  
+    # Set seed
     if seed is not None:
-      initializer = tf.keras.initializers.he_uniform(seed=seed)
+      _random = random.Random(seed)
+      seed = lambda: _random.randint(0,2**32-1)
     else:
-      initializer = 'he_uniform'
+      seed = lambda: None
+    
     # Aply the layers before correlation
     right_layers = right_layers or left_layers
+    for 
     x = tf.nest.map_structure(
-      lambda i,l,n: l(
+      lambda i,l,n,s: l(
         i, 
-        kernel_initializer=initializer,
-        name_scope=n,
+        name=n,
+        seed=s
       ),
       x,
       (left_layers, right_layers),
       ('Left', 'Right'),
+      (seed(), seed())
     )
 
     outputs = layers.correlation(*x)
     outputs = pos_layers(
       outputs, 
-      kernel_initializer=initializer,
+      seed=seed(),
     )
     
     super(PseudoSiamFCN, self).__init__(

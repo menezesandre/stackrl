@@ -1,8 +1,10 @@
-import inspect
 import collections
+import inspect
+import random
+
+import gin
 import tensorflow as tf
 from tensorflow import keras as k
-import gin
 
 def correlation(*inputs, dtype=None):
   """Aplies the correlation layer to inputs tensors"""
@@ -19,16 +21,20 @@ def correlation(*inputs, dtype=None):
 def sequential(
   inputs, 
   layers, 
-  kernel_initializer='he_uniform', 
+  kernel_initializer=None,
   dtype=None,
-  name_scope=None,
+  name=None,
+  seed=None,
 ):
   """Aplies a sequence of layers
   Args:
     inputs: input tensor(s).
     layers: sequence of layers to be aplied. List of tuples with layer
       constructor and dictionary with kwargs for the constructor.
-    kernel_initializer: kernel initializer to be used in all layers to 
+    kernel_initializer: String identifier of the kernel initializer to
+      be used in all layers that have kernels. Any 'kernel_initializer'
+      argument provided in the layers' kwargs is not overwriten by this
+      argument. If None, no argument is passed to the layers.
       which it aplies. Either a string identifier (in which case the 
       corresponding initializer is intantiated for each layer) or an
       instance of a keras Initializer to be used in all layers. (Use the
@@ -36,10 +42,12 @@ def sequential(
       seed, to get reproducible results.)
     dtype: data type of the layers. If None, default layer's dtype is 
       used.
-    name_scope: layers are instantiated with names prefixed with this 
+    name: layers are instantiated with names prefixed with this name
       scope. Note: if provided, layer's names are made unique within 
       this function, but not globaly (i.e. collisions may happen if 
       this scope is used elsewhere).
+    seed: seed of the random sequence of integers that serve as seeds 
+      for the kernel initializers.
   Returns:
     The output tensor
   Raises:
@@ -50,17 +58,16 @@ def sequential(
   """
   # Validate layers argument
   for i, l in enumerate(layers):
-    # TODO() relax requirement of being a keras Layer
+    # TODO relax requirement of being a keras Layer
     if isinstance(l, tuple):
       if len(l) >= 2 and issubclass(l[0], k.layers.Layer) and isinstance(l[1], dict):
         continue
       elif len(l) == 1 and issubclass(l[0], k.layers.Layer):
         layers[i] = (l[0], {})
         continue
-    else:
-      if issubclass(l, k.layers.Layer):
-        layers[i] = (l, {})
-        continue
+    elif issubclass(l, k.layers.Layer):
+      layers[i] = (l, {})
+      continue
     raise ValueError(
       "Invalid value {} for argument layers at index {}.".format(
         l,
@@ -68,8 +75,14 @@ def sequential(
       )
     )
 
+  name_scope = name
   if name_scope:
     name_counts = collections.defaultdict(lambda: 0)
+  
+  if seed is not None and kernel_initializer:
+    _random = random.Random(seed)
+    seed = lambda: _random.randint(0,2**32-1)
+    kernel_initializer = k.initializers.get(kernel_initializer)
 
   x = inputs
   for layer,kwargs in layers:
@@ -86,27 +99,28 @@ def sequential(
         name += '_{}'.format(nid)
       name = '{}/{}'.format(name_scope, name)
 
-    args,_,_,_ = inspect.getargspec(layer)
-    if 'kernel_initializer' in args and 'kernel_initializer' not in kwargs:
-      x = layer(
-        **kwargs, 
-        kernel_initializer=kernel_initializer, 
-        dtype=dtype,
-        name=name,
-      )(x)
-    else:
-      x = layer(
-        **kwargs, 
-        dtype=dtype,
-        name=name,
-      )(x)
+    if kernel_initializer:
+      args,_,_,_ = inspect.getargspec(layer)
+      for kw in ['kernel_initializer','depthwise_initializer','pointwise_initializer']:
+        if kw in args and kw not in kwargs:
+          if seed:
+            config = kernel_initializer.get_config()
+            config['seed'] = seed()
+            kernel_initializer = kernel_initializer.from_config(config)
+          kwargs[kw] = kernel_initializer
+
+    x = layer(
+      **kwargs, 
+      dtype=dtype,
+      name=name,
+    )(x)
   return x
 
 def default_branch_layers(
   inputs, 
   kernel_initializer='he_uniform', 
   dtype=None,
-  name_scope=None,
+  name=None,
 ):
   """Aplies the default sequence of layers for the branches of the 
   PseudoSiamFCN
@@ -131,14 +145,14 @@ def default_branch_layers(
     ],
     kernel_initializer=kernel_initializer,
     dtype=dtype,
-    name_scope=name_scope,
+    name=name,
   )
 
 def default_pos_layers(
   inputs, 
   kernel_initializer='he_uniform',
   dtype=tf.float32,
-  name_scope=None,
+  name=None,
 ):
   """Aplies the default sequence of layers after the correlation for the
   PseudoSiamFCN.
@@ -159,5 +173,5 @@ def default_pos_layers(
     ],
     kernel_initializer=kernel_initializer,
     dtype=dtype,
-    name_scope=name_scope,
+    name=name,
   )
