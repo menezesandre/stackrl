@@ -15,20 +15,27 @@ from tensorflow import keras as k
 from siamrl.agents.policies import GreedyPolicy
 from siamrl.agents.memory import ReplayMemory
 
-optimizers = {
-  'adadelta': k.optimizers.Adadelta,
-  'adagrad': k.optimizers.Adagrad,
-  'adam': k.optimizers.Adam,
-  'adamax': k.optimizers.Adamax,
-  'ftrl': k.optimizers.Ftrl,
-  'nadam': k.optimizers.Nadam,
-  'rmsprop': k.optimizers.RMSprop,
-  'sgd': k.optimizers.SGD
-}
-
 @gin.configurable(module='siamrl.agents')
 class DQN(tf.Module):
   """DQN agent [1]"""
+  
+  metadata = {
+    'exploration_modes': [
+      'epsilon-greedy',
+      'boltzmann',
+    ],
+    'optimizers': {
+      'adadelta': k.optimizers.Adadelta,
+      'adagrad': k.optimizers.Adagrad,
+      'adam': k.optimizers.Adam,
+      'adamax': k.optimizers.Adamax,
+      'ftrl': k.optimizers.Ftrl,
+      'nadam': k.optimizers.Nadam,
+      'rmsprop': k.optimizers.RMSprop,
+      'sgd': k.optimizers.SGD
+    }
+  }
+
   def __init__(
     self,
     q_net,
@@ -41,7 +48,8 @@ class DQN(tf.Module):
     target_update_period=10000,
     discount_factor=.99,
     collect_batch_size=None,
-    exploration=0.1,
+    exploration_mode=None,
+    exploration=None,
     final_exploration=None,
     final_exploration_iter=None,
     prioritization=None,
@@ -78,14 +86,18 @@ class DQN(tf.Module):
       collect_batch_size: expected batch size of the observations 
         received in collect (i.e. from parallel environments). If None, 
         defaults to 1.
-      exploration: probability of taking a random action for the epsilon 
-        greedy policy. Scalar float between 0 and 1. If final_exploration
+      exploration_mode: method to be used for exploration. Available 
+        policies are 'epsilon-greedy' (0) and 'boltzmann' (1).
+      exploration: Exploration parameter. Epsilon for the epsilon-greedy 
+        policy (scalar between 0 and 1) or the temperature for the 
+        boltzmann policy (float larger than 0). If None, it defaults to
+        0.1 for epsilon-greedy and 1 for boltzmann. If final_exploration 
         and final_exploration_frame are not None, this is the initial 
-        exploration.
-      final_exploration: final epsilon value for the epsilon greedy
-        policy.
-      final_exploration_iter: number of iterations along witch epsilon is 
-        linearly anealed from its initial to its final value.
+        value of the exploration parameter.
+      final_exploration: final value of the exploration parameter.
+      final_exploration_iter: number of iterations along witch the 
+        exploration parameter is linearly anealed from its initial to its 
+        final value.
       prioritization: exponent that determines how much prioritization is
         used on experience replay (alpha in [2]). If None, defaults to 0
         (no priorization).
@@ -123,8 +135,8 @@ class DQN(tf.Module):
       self._optimizer = optimizer
     elif isinstance(optimizer, str):
       optimizer = optimizer.lower()
-      if optimizer in optimizers:
-        optimizer = optimizers[optimizer]
+      if optimizer in self.metadata['optimizers']:
+        optimizer = self.metadata['optimizers'][optimizer]
         if learning_rate is None:
           self._optimizer = optimizer()
         else:
@@ -133,34 +145,71 @@ class DQN(tf.Module):
         raise ValueError(
           "Invalid value {} for argument optimizer. Must be in {}.".format(
             optimizer,
-            list(optimizers.keys())
+            list(self.metadada['optimizers'].keys())
           )
         )
     else:
       raise TypeError(
         "Invalid type {} for argument optimizer. Must be a keras Optimizer or a str."
       )
-    # Set exploration (epsilon)
-    if exploration < 0 or exploration > 1:
-      raise ValueError(
-        "Invalid value {} for argument exploration. Must be in [0,1].".format(exploration)
+
+    # Set exploration
+    if exploration_mode is None:
+      self._exploration_mode = self.metadata['exploration_modes'][0]
+    elif isinstance(exploration_mode, int):
+      self._exploration_mode = self.metadata['exploration_modes'][exploration_mode]
+    elif isinstance(exploration_mode, str):
+      exploration_mode = exploration_mode.lower()
+      if exploration_mode in self.metadata['exploration_modes']:
+        self._exploration_mode = exploration_mode
+      else:
+        raise ValueError(
+          "Invalid value {} for argument exploration_mode. Must be in {}.".format(exploration_mode, self.metadata['exploration_modes'])
+        )
+    else:
+      raise TypeError(
+        "Invalid type {} for argument exploration_mode. Must be int or str.".format(type(exploration_mode))
       )
-    self._epsilon = tf.constant(exploration, dtype=tf.float32)
-    if final_exploration is None or final_exploration_iter is None:
-      self._epsilon_anealing = False
-    elif final_exploration < 0 or final_exploration > 1:
-      raise ValueError(
-        "Invalid value {} for argument final_exploration. Must be in [0,1].".format(final_exploration)
-      )
-    elif final_exploration_iter <= 0:
+
+    if self._exploration_mode == 'epsilon-greedy':
+      if exploration is None:
+        exploration = 0.1
+      if exploration < 0 or exploration > 1:
+        raise ValueError(
+          "Invalid value {} for argument exploration. Must be in [0,1].".format(exploration)
+        )
+      if final_exploration is not None and (
+        final_exploration < 0 or final_exploration > 1
+      ):
+        raise ValueError(
+          "Invalid value {} for argument final_exploration. Must be in [0,1].".format(exploration)
+        )
+    elif self._exploration_mode == 'boltzmann':
+      if exploration is None:
+        exploration = 1.
+      if exploration <= 0:
+        raise ValueError(
+          "Invalid value {} for argument exploration. Must be greater than 0.".format(exploration)
+        )
+      if final_exploration is not None and final_exploration <= 0:
+        raise ValueError(
+          "Invalid value {} for argument final_exploration. Must be greater than 0.".format(exploration)
+        )
+    else:
+      raise ValueError("Invalid value {} for argument exploration_mode".format(exploration_mode))
+
+    self._exploration = tf.constant(exploration, dtype=tf.float32)
+    if final_exploration is None or not final_exploration_iter:
+      self._exploration_anealing = False
+    elif final_exploration_iter < 0:
       raise ValueError(
         "Invalid value {} for argument final_exploration_iter. Must be greater than 0.".format(final_exploration_iter)
       )
     else:
-      self._epsilon_anealing = True
-      self._delta_epsilon = tf.constant(
+      self._exploration_anealing = True
+      self._delta_exploration = tf.constant(
         final_exploration - exploration, dtype=tf.float32)
-      self._final_epsilon_anealing_iter = tf.constant(
+      self._final_exploration_iter = tf.constant(
         final_exploration_iter, dtype=tf.float32)
 
     # Define loss
@@ -197,8 +246,6 @@ class DQN(tf.Module):
       q_net.input
     )
     self._n_actions = q_net.output_shape[-1]
-    # Set policy
-    self.policy = GreedyPolicy(q_net)
     # Set prioritization
     prioritization = prioritization or 0.
     self._prioritized = prioritization > 0.
@@ -243,8 +290,7 @@ class DQN(tf.Module):
       )
       action_spec = tf.TensorSpec(
         shape=(collect_batch_size,),
-        dtype=self.policy.output.dtype,
-        # dtype=tf.int64,
+        dtype=tf.int64,
       )
       self.observe = tf.function(
         self.observe,
@@ -264,6 +310,7 @@ class DQN(tf.Module):
         ]
       )
       self.train = tf.function(self.train, input_signature=[])
+      # self.policy = tf.function(self.policy)
 
   def __del__(self):
     try:
@@ -280,13 +327,13 @@ class DQN(tf.Module):
 
   @property
   def epsilon(self):
-    if self._epsilon_anealing:
-      return self._epsilon + self._delta_epsilon*tf.minimum(
-        1.,
-        tf.cast(self.iterations, dtype=tf.float32)/self._final_epsilon_anealing_iter
-      )
+    if self._exploration_mode == 'epsilon-greedy':
+      return self.get_exploration()
+    elif self._exploration_mode == 'boltzmann':
+      # TODO: Get a better estimate
+      return tf.math.exp(-1/self.get_exploration())
     else:
-      return self._epsilon
+      raise NotImplementedError()
 
   @property
   def iterations(self):
@@ -295,6 +342,62 @@ class DQN(tf.Module):
   @property
   def replay_memory_size(self):
     return self._replay_memory.max_length
+
+  def get_exploration(self):
+    if self._exploration_anealing:
+      return self._exploration + self._delta_exploration*tf.minimum(
+        1.,
+        tf.cast(self.iterations, dtype=tf.float32)/self._final_exploration_iter
+      )
+    else:
+      return self._exploration
+
+  def policy(self, inputs, exploration=False, values=False, output_type=tf.int64):  # pylint: disable=method-hidden
+    q_values = self._q_net(inputs)
+    if exploration:
+      e = self.get_exploration()
+      if self._exploration_mode == 'epsilon-greedy':
+        batch_size = tf.shape(tf.nest.flatten(inputs)[0])[0]
+        actions = tf.where(
+          tf.random.uniform(
+            (batch_size,),
+            seed=self._seed,
+          ) > e, 
+          tf.math.argmax(q_values, axis=-1, output_type=output_type),
+          tf.random.uniform(
+            (batch_size,), 
+            maxval=self._n_actions, 
+            dtype=output_type,
+            seed=self._seed,
+          ),
+        )
+      elif self._exploration_mode == 'boltzmann':
+        # Gumbel-max trick
+        z = -tf.math.log(-tf.math.log(
+          tf.random.uniform(tf.shape(q_values), seed=self._seed)
+        ))
+        actions = tf.math.argmax(
+          q_values/e + z, 
+          axis=-1, 
+          output_type=output_type
+        )
+        # actions = tf.squeeze(
+        #   tf.random.categorical(
+        #     q_values/e,
+        #     1,
+        #     dtype=output_type,
+        #     seed=self._seed,
+        #   ), 
+        #   axis=-1,
+        # )
+      else:
+        raise NotImplementedError()
+    else:
+      actions = tf.math.argmax(q_values, axis=-1, output_type=output_type)
+    if values:
+      return actions, q_values
+    else:
+      return actions
 
   def save_weights(self, *args, **kwargs):
     """Save weights from the Q net."""
@@ -312,22 +415,7 @@ class DQN(tf.Module):
 
   def collect(self, state, reward, terminal):  # pylint: disable=method-hidden
     """Computes action for given state and stores time step."""
-    batch_size = tf.shape(tf.nest.flatten(state)[0])[:1]
-    cond = tf.random.uniform(
-      batch_size, 
-      seed=self._seed
-    ) > self.epsilon
-    action = tf.where(
-      cond, 
-      self.policy(state),
-      tf.random.uniform(
-        batch_size, 
-        maxval=self._n_actions, 
-        dtype=self.policy.output.dtype,
-        # dtype=tf.int64,
-        seed=self._seed,
-      )
-    )
+    action = self.policy(state, exploration=True)
     self._replay_memory.add(state, reward, terminal, action)
     return action
 
@@ -362,7 +450,7 @@ class DQN(tf.Module):
       if self._double:
         target_q_values = tf.reduce_sum(
           target_q_values*tf.one_hot(
-            self.policy(next_states), 
+            tf.math.argmax(self._q_net(next_states), axis=-1), 
             self._n_actions
           ),
           axis=-1,

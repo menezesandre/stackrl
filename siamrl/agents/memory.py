@@ -163,7 +163,7 @@ class ReplayMemory(tf.Module):
     """
     # Sample without replacement using the Gumbel-max trick [1]
     z = -tf.math.log(-tf.math.log(
-      tf.random.uniform(self._logits.shape, seed=self._seed)
+      tf.random.uniform(tf.shape(self._logits), seed=self._seed)
     ))
     values,indexes = tf.math.top_k(self._logits+z, k=minibatch_size)
     # Assert that no 'unsampleable' values were sampled (this would mean 
