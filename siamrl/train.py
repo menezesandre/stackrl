@@ -88,8 +88,8 @@ class Training(object):
 
     # Set seeder.
     if seed is not None:
-      random.seed(seed)
-      seed = lambda: random.randint(0,2**32-1)
+      _random = random.Random(seed)
+      seed = lambda: _random.randint(0,2**32-1)
     else:
       seed = lambda: None
     self._seeder = seed
@@ -387,27 +387,39 @@ class Training(object):
     # Reset evaluation reward and environment
     self._eval_reward.reset(full=True)
     step = self._eval_env.reset()
+    values = []
     while not self._eval_reward.full:
-      if callable(step):
-        o = step()[0]
-      else:
-        o = step[0]
-      step = self._eval_env.step(self._agent.policy(o))
+      a, value = self._agent.policy(step[0], values=True)
+      step = self._eval_env.step(a)
       self._eval_reward += step
+      values.append(value)
+    
+    values = tf.stack(values)
+    mean_max_value = tf.reduce_mean(tf.reduce_max(values, axis=-1))
+    mean_value = tf.reduce_mean(values)
+    std_value = tf.math.reduce_std(values)
+    min_value = tf.reduce_min(values)
+    max_value = tf.reduce_max(values)
 
-    # If file is to be created, add header
+    # If eval file is to be created, add header
     if not os.path.isfile(self._eval_file):
-      line = 'Iter,Reward\n'
+      line = 'Iter,Reward,Value,MeanValue,StdValue,MinValue,MaxValue\n'
     else:
       line = ''
     # Add iteration number and results
-    line += '{},{}\n'.format(
+    line += '{},{},{},{},{},{},{}\n'.format(
       self.iterations,
-      self._eval_reward.result.numpy()
+      self._eval_reward.result.numpy(),
+      mean_max_value.numpy(),
+      mean_value.numpy(),
+      std_value.numpy(),
+      min_value.numpy(),
+      max_value.numpy(),
     )
     # Write to file
     with open(self._eval_file, 'a') as f:
       f.write(line)
+
     self.log('Done.')
 
   def save(self):
