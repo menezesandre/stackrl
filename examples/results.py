@@ -17,7 +17,7 @@ medfilt = False
 paths = []
 iter_key = 'Iter'
 target_keys = []
-default_target_keys = ['Loss', 'Reward']
+default_target_keys = ['Loss', 'MeanError', 'Reward']
 if __name__=='__main__':
   argv = sys.argv[:0:-1]
   while argv:
@@ -30,11 +30,14 @@ if __name__=='__main__':
       medfilt = True
     elif arg == '--iter-key':
       iter_key = argv.pop()
-    elif arg == '-b':
-      plot_baselines = True
-    elif arg == '--baselines':
-      bfile = argv.pop()
-      # TODO Load baselines from file
+    elif arg.startswith('--baselines'):
+      arg = arg.split('=')
+      if len(arg) > 1:
+        baselines = {}
+        with open(arg[1]) as f:
+          for line in f:
+            line = line.split(':')
+            baselines[line[0]] = float(line[1])
       plot_baselines = True
     elif arg == '-t':
       target_keys.append(argv.pop())
@@ -106,13 +109,18 @@ if __name__=='__main__':
         unpack=True
       )
       end_iters = np.atleast_1d(curriculum[0])
+      goals = np.atleast_1d(curriculum[1])
 
       split = [0]
       i = 0
-      for end_iter in end_iters:
+      for end_iter, goal in zip(end_iters, goals):
         for i in range(i,len(iters)):
           if iters[i] > end_iter:
-            split.append(i)
+            if goal == 0:
+              if file_name.endswith('train.csv'):
+                split = [i]
+            else:
+              split.append(i)
             break
       split.append(len(iters))
       
@@ -154,13 +162,16 @@ if __name__=='__main__':
 
     axs[-1].set_xlabel(iter_key)
 
-    name = os.path.split(file_name)[-1].split('.')[0]
-    prefix = os.path.split(path)[-1]
-    if prefix == '.':
-      prefix = ''
-    plt.savefig(prefix+name+'.png')
+    path, name0 = os.path.split(path)
+    name1 = os.path.split(file_name)[-1].split('.')[0]
+    if name0 == '.':
+      name = name1
+    else: 
+      name = '{}_{}'.format(name0, name1)
+    for ext in ['png', 'pdf']:
+      plt.savefig(os.path.join(path,'plots',ext,'{}.{}'.format(name,ext)))
+
     if show:
       plt.show()
     else:
       plt.close()
-
