@@ -73,7 +73,6 @@ class PseudoSiamFCN(tf.keras.Model):
     
     # Aply the layers before correlation
     right_layers = right_layers or left_layers
-    for 
     x = tf.nest.map_structure(
       lambda i,l,n,s: l(
         i, 
