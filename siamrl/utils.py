@@ -295,7 +295,7 @@ def plot(fname, x_key, y_keys, split=None, baselines=None, show=False, legend='T
 def plot_train(path, **kwargs):
   return plot(
     fname=os.path.join(path, 'train.csv'),
-    x_key='Iters',
+    x_key='Iter',
     y_keys=['Loss', 'Reward'],
     split=os.path.join(path, 'curriculum.csv'),
     **kwargs,
@@ -333,7 +333,7 @@ def plot_eval(path, **kwargs):
 
   return plot(
     fname=os.path.join(path, 'eval.csv'),
-    x_key='Iters',
+    x_key='Iter',
     y_keys=['Reward'],
     split=os.path.join(path, 'curriculum.csv'),
     baselines=baselines,

@@ -105,7 +105,7 @@ class Baseline(object):
       best = np.array(np.unravel_index(best, value.shape))
     return best
 
-def test(env_id, num_steps=1024, method=None, verbose=False, gui=False):
+def test(env_id, num_steps=1024, method=None, verbose=False, gui=False, seed=11):
   if method:
     policies = {method:Baseline(method=method)}
     results=None
@@ -115,7 +115,7 @@ def test(env_id, num_steps=1024, method=None, verbose=False, gui=False):
     results={}
   
   for name, policy in policies.items():
-    env = gym.make(env_id, use_gui=gui)
+    env = gym.make(env_id, use_gui=gui, seed=seed)
     
     tr = 0.
     ne = 0
@@ -149,7 +149,7 @@ def test(env_id, num_steps=1024, method=None, verbose=False, gui=False):
     del(env)
 
   if results:
-    fname = os.path.join(
+    fpath = os.path.join(
       os.path.dirname(__file__),
       '..',
       'data',
@@ -157,6 +157,9 @@ def test(env_id, num_steps=1024, method=None, verbose=False, gui=False):
       envs.utils.as_path(env_id),
       'results',
     )
+    fname = os.path.join(fpath, 'results')
+    if not os.path.isdir(fpath):
+      os.makedirs(fpath)
     with open(fname, 'w') as f:
       for k,v in results.items():
         f.write('{}:{}\n'.format(k,v))
