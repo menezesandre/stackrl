@@ -2,7 +2,14 @@
 Baseline policies with no learning, using 
   OpenCV's Template Matching
 """
+from datetime import datetime
+import time
+import os
+
+import gym
 import numpy as np
+
+from siamrl import envs
 
 def _trimmed_goal(observation):
   shape = observation[1].shape
@@ -97,3 +104,61 @@ class Baseline(object):
     if not self._flat:
       best = np.array(np.unravel_index(best, value.shape))
     return best
+
+def test(env_id, num_steps=1024, method=None, verbose=False, gui=False):
+  if method:
+    policies = {method:Baseline(method=method)}
+    results=None
+  else:
+    policies = {m:Baseline(method=m) for m in methods}
+    policies['random (anywhere)'] = lambda o: env.action_space.sample()
+    results={}
+  
+  for name, policy in policies.items():
+    env = gym.make(env_id, use_gui=gui)
+    
+    tr = 0.
+    ne = 0
+    o = env.reset()
+
+    if gui:
+      import pybullet as pb
+      pb.resetDebugVisualizerCamera(1., 90, -30, [0.25,0.25,0])
+      time.sleep(3.)
+    
+    if verbose:
+      print('__ {} __'.format(name))
+    for _ in range(num_steps):
+      if gui:
+        time.sleep(0.5-(datetime.now().microsecond/1e6)%0.5)
+      o,r,d,_=env.step(policy(o))
+      tr+=r
+      if d:
+        ne+=1
+        if verbose:
+          print('  Current average ({}): {}'.format(
+          ne,
+          tr/ne
+        ))
+        o=env.reset()
+
+    if results is not None:
+      results[name]=tr/ne
+    if verbose:
+      print('Final average: {}'.format(tr/ne))
+    del(env)
+
+  if results:
+    fname = os.path.join(
+      os.path.dirname(__file__),
+      '..',
+      'data',
+      'baselines',
+      envs.utils.as_path(env_id),
+      'results',
+    )
+    with open(fname, 'w') as f:
+      for k,v in results.items():
+        f.write('{}:{}\n'.format(k,v))
+    
+    return results
