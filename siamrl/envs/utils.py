@@ -1,3 +1,6 @@
+import inspect
+import os
+
 import gym
 import numpy as np
 import tensorflow as tf
@@ -50,6 +53,29 @@ def make(env, n_parallel=None, block=None, **kwargs):
     return Env(env, **kwargs)
   else:
     return ParallelEnv(env, n_parallel=n_parallel, block=block, **kwargs)
+
+def as_path(env_id):
+  """Returns a path that captures the registered environment's
+  name and complete set of arguments. May be used to log and 
+  access results for a specific setting."""
+  env_spec = gym.envs.registry.env_specs[env_id]
+
+  entry_point = env_spec.entry_point
+  if not callable(entry_point):
+    entry_point = gym.envs.registration.load(entry_point)
+
+  args = {
+    p.name:(p.default if p.default != p.empty else None)
+    for p in inspect.signature(entry_point).parameters.values()
+  }
+  args.update(env_spec._kwargs)
+
+  path = [entry_point.__name__]
+  for k,v in args.items():
+    if k != 'seed':
+      path.append('{}-{}'.format(k,v).replace('.','_'))
+
+  return os.path.join(*path)
 
 class Env(object):
   """Wraps a gym Env to receive and return tensors with batch dimension.
