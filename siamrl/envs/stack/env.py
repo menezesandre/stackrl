@@ -1,11 +1,9 @@
-import numpy as np
-
+import gin
 import gym
 from gym import spaces
 from gym.utils import seeding
 from gym.envs import registry
-
-import gin
+import numpy as np
 
 from siamrl.envs import data
 from siamrl.envs.stack.simulator import Simulator
@@ -413,6 +411,8 @@ def register(env_id=None, entry_point=None, **kwargs):
     env_id: id with which the environment will be registered. If None,
       id is of the form 'Stack-v%d', using the lowest unregistered
       version number.
+    entry_point: class name or string identifier of the environment 
+      to be registered. If None, defaults to StackEnv.
     kwargs: key word arguments for StackEnv.
   Returns:
     Registered environment's id.
@@ -434,8 +434,8 @@ def register(env_id=None, entry_point=None, **kwargs):
   gym.register(
     id=env_id,
     entry_point=entry_point,
-    max_episode_steps = 2**64-1,
-    kwargs = kwargs
+    # max_episode_steps = 2**64-1,
+    kwargs = kwargs,
   )
 
   return env_id
