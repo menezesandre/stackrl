@@ -13,8 +13,6 @@ from siamrl.agents import DQN
 from siamrl.envs import make, assert_registered
 from siamrl.utils import Timer, AverageMetric, AverageReward
 
-__all__ = ['Training']
-
 @gin.configurable(module='siamrl')
 class Training(object):
   """Implements the DQN training routine"""
@@ -35,7 +33,8 @@ class Training(object):
     checkpoint_interval=10000,
     goal_check_interval=1000,
     memory_growth=True,
-    seed=None
+    seed=None,
+    eval_seed=None,
   ):
     """
     Args:
@@ -68,6 +67,9 @@ class Training(object):
         components (env, net, agent). (Note: if not provided, None is 
         explicitly passed as seed to the components, overriding any 
         default/configuration.)
+      eval_seed: the evaluation environment is seeded with
+        this at the beginning of each evaluation. If not provided, a number
+        is taken from the random sequence of integers given by seed.
     """
     # Set log directory and file
     if not os.path.isdir(directory):
@@ -87,12 +89,8 @@ class Training(object):
         self.log("Couldn't set memory growth to {} for device {}. Already initialized.".format(memory_growth, device))
 
     # Set seeder.
-    if seed is not None:
-      _random = random.Random(seed)
-      seed = lambda: _random.randint(0,2**32-1)
-    else:
-      seed = lambda: None
-    self._seeder = seed
+    _random = random.Random(seed)
+    seed = lambda: _random.randint(0,2**32-1)
     # Set global seeds.
     tf.random.set_seed(seed())
     np.random.seed(seed())
@@ -132,18 +130,25 @@ class Training(object):
     else:
       self._goal_check_interval = None
 
-    # Set environment
+    # Set environments
+    self._env_seed = seed()
     self._env = make(
       env, 
       n_parallel=num_parallel_envs, 
-      seed=seed()
+      seed=self._env_seed,
     )
     self._eval_env = make(
       eval_env or env, 
       n_parallel=num_parallel_envs,
       block=True,
-      seed=seed()
     )
+    if eval_seed is None:
+      self._eval_seed = seed()
+    else:
+      self._eval_seed = eval_seed
+      # Call the seeder anyway so that the rest of the seeds from the
+      # sequence are the same regardless of eval_seed being provided.
+      _=seed()
 
     # Agent
     self._agent = agent(
@@ -386,6 +391,7 @@ class Training(object):
     self.log('Running evaluation...')
     # Reset evaluation reward and environment
     self._eval_reward.reset(full=True)
+    self._eval_env.seed(self._eval_seed)
     step = self._eval_env.reset()
     values = []
     while not self._eval_reward.full:
@@ -519,7 +525,7 @@ class Training(object):
     new_env = make(
       env_id,
       n_parallel=n_parallel,
-      seed=self._seeder()
+      seed=self._env_seed,
     )
 
     assert new_env.observation_spec == self._env.observation_spec \
@@ -533,7 +539,6 @@ class Training(object):
       new_env = make(
         env_id,
         n_parallel=n_parallel,
-        seed=self._seeder()
       )
       assert new_env.observation_spec == self._eval_env.observation_spec \
         and new_env.action_spec == self._eval_env.action_spec, \
