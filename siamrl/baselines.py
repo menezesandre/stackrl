@@ -31,28 +31,28 @@ try:
   def ccoeff(observation, normed=True):
     img = observation[0][:,:,0]
     tmp = observation[1][:,:,0]
-    return -cv.matchTemplate(
+    return -cv.matchTemplate(  # pylint: disable=no-member
       img, 
       tmp, 
-      cv.TM_CCOEFF_NORMED if normed else cv.TM_CCOEFF
+      cv.TM_CCOEFF_NORMED if normed else cv.TM_CCOEFF  # pylint: disable=no-member
     )
 
   def gradcorr(observation, normed=True):
     img = observation[0][:,:,0]
     tmp = observation[1][:,:,0]
 
-    img_x = cv.Sobel(img, cv.CV_32F, 1, 0)
-    img_y = cv.Sobel(img, cv.CV_32F, 0, 1)
-    tmp_x = cv.Sobel(tmp, cv.CV_32F, 1, 0)
-    tmp_y = cv.Sobel(tmp, cv.CV_32F, 0, 1)
+    img_x = cv.Sobel(img, cv.CV_32F, 1, 0)  # pylint: disable=no-member
+    img_y = cv.Sobel(img, cv.CV_32F, 0, 1)  # pylint: disable=no-member
+    tmp_x = cv.Sobel(tmp, cv.CV_32F, 1, 0)  # pylint: disable=no-member
+    tmp_y = cv.Sobel(tmp, cv.CV_32F, 0, 1)  # pylint: disable=no-member
 
-    img = cv.merge([img_x, img_y])
-    tmp = cv.merge([tmp_x, tmp_y])
+    img = cv.merge([img_x, img_y])  # pylint: disable=no-member
+    tmp = cv.merge([tmp_x, tmp_y])  # pylint: disable=no-member
     
-    return -cv.matchTemplate(
+    return -cv.matchTemplate(  # pylint: disable=no-member
       img, 
       tmp, 
-      cv.TM_CCORR_NORMED if normed else cv.TM_CCORR
+      cv.TM_CCORR_NORMED if normed else cv.TM_CCORR  # pylint: disable=no-member
     )
   
 except ImportError:
