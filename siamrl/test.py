@@ -1,12 +1,15 @@
+from datetime import datetime
 import os
+import sys
+import time
 
 import gin
 import gym
 import numpy as np
 
-from siamrl.nets import PseudoSiamFCN
-from siamrl.agents.policies import GreedyPolicy, PyWrapper
-from siamrl.envs.utils import get_space_spec
+from siamrl import agents
+from siamrl import envs
+from siamrl import nets
 
 def load_policy(
   observation_spec, 
@@ -29,13 +32,14 @@ def load_policy(
     raise FileNotFoundError("Couldn't find '{}'".format(config_file))
   # Set observation spec
   if isinstance(observation_spec, gym.Space):
-    observation_spec = get_space_spec(observation_spec)
+    observation_spec = envs.utils.get_space_spec(observation_spec)
     py = True
 
-  net = PseudoSiamFCN(observation_spec)
   if os.path.isdir(os.path.join(path,'saved_weights')):
     if iters is not None:
-      path = os.path.join(path,'saved_weights', str(iters))
+      if not isinstance(iters, list):
+        iters = [iters]  
+      paths = [os.path.join(path,'saved_weights', str(i)) for i in iters]
     elif os.path.isfile(os.path.join(path,'eval.csv')):
       # Use best evaluated policy
       iters, reward = np.loadtxt(
@@ -43,17 +47,172 @@ def load_policy(
         delimiter=',',
         skiprows=2,
         unpack=True,
-      )
+      )[:2]
       i = np.argmax(reward)
       iters = int(iters[i])
       # print('Iters: {}'.format(iters))
-      path = os.path.join(path,'saved_weights', str(iters))
+      paths = [os.path.join(path,'saved_weights', str(iters))]
 
-  if not os.path.isdir(path):
-    raise FileNotFoundError("Couldn't find '{}'".format(path))
-  net.load_weights(os.path.join(path,'weights'))
-  policy = GreedyPolicy(net, debug=debug)
-  if py:
-    policy = PyWrapper(policy)
+  policies = []
+  for path in paths:
+    if not os.path.isdir(path):
+      raise FileNotFoundError("Couldn't find '{}'".format(path))
+    net = nets.PseudoSiamFCN(observation_spec)
+    net.load_weights(os.path.join(path,'weights'))
+    policy = agents.policies.GreedyPolicy(net, debug=debug)
+    if py:
+      policy = agents.policies.PyWrapper(policy)
+    policies.append(policy)
+
+  if len(policies) == 1:
+    return policies[0]
+  else:
+    return policies
+
+def test(
+  env_id, 
+  path='.',
+  iters=None,
+  num_steps=1024,
+  verbose=True,
+  visualize=False,
+  gui=False, 
+  sleep=0.5, 
+  seed=11
+):
+  sleep = 1. if sleep > 1 else 0. if sleep < 0 else sleep
+
+  env = gym.make(env_id, use_gui=gui)
+  policies = load_policy(env.observation_space, path=path, iters=iters, debug=True)
+  if not isinstance(policies, list):
+    policies = [policies]
+    iters = [iters]
+
+  if visualize:
+    import matplotlib.pyplot as plt
+    
+    plot_all = len(policies) < 5
+    if plot_all:
+      fig, axs = plt.subplots(
+        2,1+len(policies), 
+        gridspec_kw={'height_ratios':[4, 1]}
+      )
+    else:
+      fig, axs = plt.subplots(
+        2,2, 
+        gridspec_kw={'height_ratios':[4, 1]}
+      )
+    v_shape = (
+      env.observation_space[0].shape[0]-env.observation_space[1].shape[0]+1,
+      env.observation_space[0].shape[1]-env.observation_space[1].shape[1]+1
+    )
+
+  for i in range(len(policies)):
+    if verbose and iters[i]:
+      print('__ {} __'.format(iters[i]))
+
+    tr = 0.
+    tv = 0.
+    ne = 0
+    env.seed(seed)
+    o = env.reset()
+
+    if gui:
+      import pybullet as pb
+      pb.resetDebugVisualizerCamera(1., 90, -30, [0.25,0.25,0])
+      time.sleep(5*sleep)
   
-  return policy
+    for n in range(num_steps):
+      if visualize and plot_all:
+        values = [p(o) for p in policies]
+        a,v = values[i]
+        values = [value for action,value in values]
+      else:
+        a,v = policies[i](o)
+
+      if visualize:
+        o0, o1 = env.render(mode='rgb_array')
+        axs[0][0].cla()
+        axs[0][0].imshow(o0)
+        axs[1][0].cla()
+        axs[1][0].imshow(o1)
+        if plot_all:
+          for j,value in enumerate(values):
+            h_value = np.mean(value)
+            h_value += np.std(value)
+            value = value.reshape(v_shape)
+
+            axs[0][j+1].cla()
+            axs[0][j+1].imshow(value)
+            axs[1][j+1].cla()
+            axs[1][j+1].imshow(np.where(value>h_value, value, h_value))
+            if j == i:
+              axs[1][j+1].set_xlabel('Current policy')
+        else:
+          value = v
+          h_value = np.mean(value)
+          h_value += np.std(value)
+          value = v.reshape(v_shape)
+
+          axs[0][j+1].cla()
+          axs[0][j+1].imshow(value)
+          axs[1][j+1].cla()
+          axs[1][j+1].imshow(np.where(value>h_value, value, h_value))
+          
+      if visualize:
+        fig.show()
+        plt.pause(sleep-(datetime.now().microsecond/1e6)%sleep)
+      elif gui:
+        time.sleep(sleep-(datetime.now().microsecond/1e6)%sleep)
+
+      o,r,d,_ = env.step(a)
+      tr += r
+      tv += v[a]
+      if d:
+        ne+=1
+        if verbose:
+          print('  Current average ({}): Reward {}, Value {}'.format(
+            ne,
+            tr/ne,
+            tv/n
+          ))
+        o=env.reset()
+
+    if verbose:
+      print('Final average: Reward {}, Value {}'.format(tr/ne, tv/ne))
+  
+  if visualize:
+    plt.close()
+
+if __name__ == '__main__':
+  # Default args
+  path,config_file,env = '.','config.gin',None
+  # Parse arguments
+  argv = sys.argv[:0:-1]
+  kwargs = {}
+  while argv:
+    arg=argv.pop()
+    if arg == '--config':
+      config_file = argv.pop()
+    elif arg == '-e':
+      env = argv.pop()
+    elif arg == '-i':
+      kwargs['iters'] = argv.pop().split(',')
+    elif arg == '-q':
+      kwargs['verbose'] = False
+    elif arg == '-v':
+      kwargs['visualize'] = True
+    elif arg == '--gui':
+      kwargs['gui'] = True
+    else:
+      path = arg
+  # If env is not provided, register it with args binded from config_file
+  if not env:
+    if config_file:
+      try:
+        gin.parse_config_file(os.path.join(path, config_file))
+      except OSError:
+        gin.parse_config_file(config_file)
+    env = envs.stack.register()
+
+  test(env, path, **kwargs)

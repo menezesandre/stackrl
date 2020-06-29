@@ -25,6 +25,8 @@
 # stack.register.flat_action=True
 # stack.register.dtype='float32'
 
+# eval/stack.register.episode_length = 0
+
 # stack.curriculum.goals = []
 # stack.curriculum.ckwargs = {}
 
@@ -90,7 +92,7 @@
 # agents.DQN.replay_memory_size=100000
 # agent.DQN.prefetch=None
 # agents.DQN.target_update_period=10000
-# agents.DQN.discount_factor=1.
+# agents.DQN.discount_factor=.99
 # agents.DQN.collect_batch_size=None
 # agents.DQN.exploration=0.1
 # agents.DQN.final_exploration=None
@@ -119,3 +121,6 @@
 
 # siamrl.Training.initialize.num_steps = None
 # siamrl.Training.initialize.policy = None
+
+# siamrl.Training.run.max_num_iters = 1000000
+# siamrl.Training.run.stop_when_complete = False

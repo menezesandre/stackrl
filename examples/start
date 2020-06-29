@@ -6,7 +6,7 @@ while [ -n "$1" ]; do
     --gpu)
       GPU="$2"
       shift
-      ;;
+      ;;generator.
     --tag)
       TAG=":$2"
       shift
@@ -53,4 +53,4 @@ else
   fi
 fi
 
-eval "docker run $GPU $MODE --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/siamrl$TAG train -d ./tmp$CURRICULUM$REDIRECT"
+eval "docker run $GPU $MODE --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/siamrl$TAG python -m siamrl.train -d ./tmp$CURRICULUM$REDIRECT"

@@ -105,7 +105,7 @@ class Baseline(object):
       best = np.array(np.unravel_index(best, value.shape))
     return best
 
-def test(env_id, num_steps=1024, method=None, verbose=False, gui=False, seed=11):
+def test(env_id, method=None, num_steps=1024, verbose=False, gui=False, sleep=0.5, seed=11):
   if method:
     policies = {method:Baseline(method=method)}
     results=None
@@ -113,7 +113,10 @@ def test(env_id, num_steps=1024, method=None, verbose=False, gui=False, seed=11)
     policies = {m:Baseline(method=m) for m in methods}
     policies['random (anywhere)'] = lambda o: env.action_space.sample()
     results={}
-  
+
+  sleep = 1. if sleep > 1 else sleep
+  sleep = 0. if sleep < 0 else sleep
+
   for name, policy in policies.items():
     env = gym.make(env_id, use_gui=gui, seed=seed)
     
@@ -124,13 +127,13 @@ def test(env_id, num_steps=1024, method=None, verbose=False, gui=False, seed=11)
     if gui:
       import pybullet as pb
       pb.resetDebugVisualizerCamera(1., 90, -30, [0.25,0.25,0])
-      time.sleep(3.)
+      time.sleep(5*sleep)
     
     if verbose:
       print('__ {} __'.format(name))
     for _ in range(num_steps):
       if gui:
-        time.sleep(0.5-(datetime.now().microsecond/1e6)%0.5)
+        time.sleep(sleep-(datetime.now().microsecond/1e6)%sleep)
       o,r,d,_=env.step(policy(o))
       tr+=r
       if d:

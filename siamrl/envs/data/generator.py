@@ -1,6 +1,11 @@
 """
 Run this file to (re)generate the models in 'generated' folder
 """
+import os
+import sys
+
+import numpy as np
+from numpy import random
 try:
   from trimesh import creation
   from trimesh import transformations
@@ -9,11 +14,6 @@ except ImportError:
   Package 'trimesh' is necessary to run generator module.
   Install using 'pip install trimesh'"""
   )
-
-from os import path as _path
-
-import numpy as np
-from numpy import random
 
 from siamrl.envs import data
 
@@ -89,11 +89,11 @@ def from_box(
 
     name_i = name+index_format%i
     # Export mesh to .obj file
-    filename = _path.join(directory, name_i+'.obj')
+    filename = os.path.join(directory, name_i+'.obj')
     with open(filename, 'w') as f:
       mesh.export(file_obj=f, file_type='obj')
     # Create .urdf file from template with mesh specs
-    filename = _path.join(directory, name_i+'.urdf')
+    filename = os.path.join(directory, name_i+'.urdf')
     with open(filename, 'w') as f:
       f.write(urdf.format(
           name_i, 
@@ -191,11 +191,11 @@ def from_icosphere(
 
     name_i = name+index_format%i
     # Export mesh to .obj file
-    filename = _path.join(directory, name_i+'.obj')
+    filename = os.path.join(directory, name_i+'.obj')
     with open(filename, 'w') as f:
       mesh.export(file_obj=f, file_type='obj')
     # Create .urdf file from template with mesh specs
-    filename = _path.join(directory, name_i+'.urdf')
+    filename = os.path.join(directory, name_i+'.urdf')
     with open(filename, 'w') as f:
       f.write(urdf.format(
           name_i, 
@@ -230,3 +230,26 @@ def random_scale_matrix(min_factor=0.5, max_factor=1):
     np.sin(phi)
   ])
   return transformations.scale_matrix(factor=factor, direction=direction)
+
+if __name__ == '__main__':
+  # Default args
+  n,directory,split,seed = 5000, data.path('generated'), 0.1, None
+  # Parse arguments
+  argv = sys.argv[:0:-1]
+  while argv:
+    arg=argv.pop()
+    if arg == '-d':
+      directory = argv.pop()
+    elif arg == '--split':
+      split = float(argv.pop())
+    elif arg == '--seed':
+      seed = int(argv.pop())
+    else:
+      n = int(arg)
+  
+  n_test = int(n*split)
+  n_train = n - n_test
+  seed_test = seed+1 if seed is not None else None
+  from_icosphere(n=n_train, directory=directory, name='train', seed=seed)
+  from_icosphere(n=n_test, directory=directory, name='test', seed=seed_test)
+  

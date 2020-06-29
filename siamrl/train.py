@@ -1,17 +1,17 @@
+from datetime import datetime
 import os
+import random
 import sys
 import traceback
-import random
-from datetime import datetime
 
 import gin
 import numpy as np
 import tensorflow as tf
 
-from siamrl.nets import PseudoSiamFCN
+from siamrl import envs
+from siamrl import metrics
 from siamrl.agents import DQN
-from siamrl.envs import make, assert_registered
-from siamrl.utils import Timer, AverageMetric, AverageReward
+from siamrl.nets import PseudoSiamFCN
 
 @gin.configurable(module='siamrl')
 class Training(object):
@@ -114,7 +114,7 @@ class Training(object):
         if goal in achieved_goals:
           # If this goal was already achieved, skip this environment
           continue
-        assert_registered(eid)
+        envs.assert_registered(eid)
         self._curriculum.insert(0, (eid, goal))
       if self._curriculum:
         env, self._current_goal = self._curriculum.pop()
@@ -132,12 +132,12 @@ class Training(object):
 
     # Set environments
     self._env_seed = seed()
-    self._env = make(
+    self._env = envs.make(
       env, 
       n_parallel=num_parallel_envs, 
       seed=self._env_seed,
     )
-    self._eval_env = make(
+    self._eval_env = envs.make(
       eval_env or env, 
       n_parallel=num_parallel_envs,
       block=True,
@@ -168,17 +168,17 @@ class Training(object):
     self._eval_file = os.path.join(directory, 'eval.csv')    
     
     # Metrics
-    self._reward = AverageReward(
+    self._reward = metrics.AverageReward(
       self._env.batch_size,
       length=train_reward_buffer_length)
-    self._eval_reward = AverageReward(
+    self._eval_reward = metrics.AverageReward(
       self._eval_env.batch_size,
       length=eval_reward_buffer_length
     )
-    self._loss = AverageMetric(length=log_interval)
-    self._mean_error = AverageMetric(length=log_interval)
-    self._collect_timer = Timer()
-    self._train_timer = Timer()
+    self._loss = metrics.AverageMetric(length=log_interval)
+    self._mean_error = metrics.AverageMetric(length=log_interval)
+    self._collect_timer = metrics.Timer()
+    self._train_timer = metrics.Timer()
 
     # Save policy weights
     self._save_weights = save_evaluated_policies
@@ -276,9 +276,10 @@ class Training(object):
       
     self._initialized = True
 
+  @gin.configurable(module='siamrl.Training')
   def run(
     self,
-    max_num_iterations=sys.maxsize,
+    max_num_iters=sys.maxsize,
     stop_when_complete=False,
     tensorboard_log=False,
   ):
@@ -314,7 +315,7 @@ class Training(object):
       step = self._env.reset()
       self._agent.acknowledge_reset()
 
-      for i in range(max_num_iterations):
+      for i in range(max_num_iters):
         # Colect experience
         with self._collect_timer:
           if callable(step):
@@ -522,7 +523,7 @@ class Training(object):
 
     self.log('Updating environment...')
     n_parallel = self._env.batch_size if self._env.multiprocessing else None
-    new_env = make(
+    new_env = envs.make(
       env_id,
       n_parallel=n_parallel,
       seed=self._env_seed,
@@ -536,7 +537,7 @@ class Training(object):
     self._env = new_env
 
     if self._replace_eval_env:
-      new_env = make(
+      new_env = envs.make(
         env_id,
         n_parallel=n_parallel,
       )
@@ -551,3 +552,34 @@ class Training(object):
     # Set flag to trigger environment reset on the training loop
     self._reset_env = True
     return True
+
+if __name__ == '__main__':
+  # Default args
+  directory,config_file,curriculum,env = '.','config.gin',False,None
+  # Parse arguments
+  argv = sys.argv[:0:-1]
+  while argv:
+    arg=argv.pop()
+    if arg == '-d':
+      directory = argv.pop()
+    elif arg == '--config':
+      config_file = argv.pop()
+    elif arg == '--curriculum':
+      curriculum = True
+    elif arg == '-e':
+      env = argv.pop()
+  # Parse config file
+  if config_file:
+    try:
+      gin.parse_config_file(os.path.join(directory, config_file))
+    except OSError:
+      gin.parse_config_file(config_file)
+  # If env is not provided, register it with args binded from config_file
+  if not env:
+    if curriculum:
+      env = envs.stack.curriculum()
+    else:
+      env = envs.stack.register()
+  # Run training
+  train = Training(env, directory=directory)
+  train.run()

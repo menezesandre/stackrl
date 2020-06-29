@@ -1,5 +1,5 @@
-from os import path as _path
-from glob import glob as _glob
+import glob
+import os
 
 def path(path=None):
   """
@@ -13,10 +13,10 @@ def path(path=None):
     FileNotFoundError: if path doesn't exist in this
       directory.
   """
-  dirname = _path.dirname(__file__)
+  dirname = os.path.dirname(__file__)
   if path:
-    path = _path.join(dirname,path)
-    if _path.exists(path):
+    path = os.path.join(dirname,path)
+    if os.path.exists(path):
       return path
     else:
       raise FileNotFoundError(
@@ -29,7 +29,7 @@ _open = open
 def open(file, **kwargs):
   """Wrapper of the built-in function open() that prepends 
     the absolute path to 'siamrl/envs/data' to the file path."""
-  return _open(_path.join(path(), file), **kwargs)
+  return _open(os.path.join(path(), file), **kwargs)
 
 def files(pattern):
   """
@@ -39,7 +39,7 @@ def files(pattern):
     A list of the files from 'siamrl/envs/data' directory that
     match the pattern.
   """
-  return _glob(_path.join(path(), pattern))
+  return glob.glob(os.path.join(path(), pattern))
 
 def generated(name='i'):
   """
@@ -50,4 +50,4 @@ def generated(name='i'):
     A list of the urdf's that start with given name, from the 
     'generated' directory
   """
-  return files(_path.join('generated',name+'*.urdf'))
+  return files(os.path.join('generated',name+'*.urdf'))
