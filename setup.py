@@ -5,9 +5,10 @@ import os
 version = {}
 with open(os.path.join(os.path.dirname(__file__),'siamrl', '__init__.py')) as f:
   for line in f:
-    if '_VERSION' in line:
-      k,v = line.split('=')
-      version[k.strip()] = int(v)
+    if '=' in line:
+      line = line.split('=')
+      if '_VERSION' in line[0]:
+        version[line[0].strip()] = int(line[1])
 version = '{MAJOR_VERSION}.{MINOR_VERSION}.{PATCH_VERSION}'.format(**version)
 
 REQUIRES = [
@@ -71,4 +72,3 @@ setup(
 #   mode = os.stat(fname).st_mode
 #   mode |= (mode & 0o444) >> 2
 #   os.chmod(fname, mode)
-
