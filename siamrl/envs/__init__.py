@@ -8,3 +8,10 @@ stack.register(
   positions_weight=1.,
   flat_action=False
 )
+
+stack.register(
+  max_z=0.5,
+  goal_size_ratio=.25,
+  occupation_ratio_weight=10.,
+  dtype='uint8',
+)
