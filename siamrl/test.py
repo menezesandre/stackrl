@@ -91,7 +91,7 @@ def test(
   if visualize:
     import matplotlib.pyplot as plt
     
-    plot_all = len(policies) < 5
+    plot_all = len(policies) > 1 and len(policies) < 5
     if plot_all:
       fig, axs = plt.subplots(
         2,1+len(policies), 
@@ -154,10 +154,10 @@ def test(
           h_value += np.std(value)
           value = v.reshape(v_shape)
 
-          axs[0][j+1].cla()
-          axs[0][j+1].imshow(value)
-          axs[1][j+1].cla()
-          axs[1][j+1].imshow(np.where(value>h_value, value, h_value))
+          axs[0][1].cla()
+          axs[0][1].imshow(value)
+          axs[1][1].cla()
+          axs[1][1].imshow(np.where(value>h_value, value, h_value))
           
       if visualize:
         fig.show()
@@ -204,6 +204,10 @@ if __name__ == '__main__':
       kwargs['visualize'] = True
     elif arg == '--gui':
       kwargs['gui'] = True
+    elif arg == '-t':
+      kwargs['sleep'] = float(argv.pop())
+    elif arg == '--seed':
+      kwargs['seed'] = int(argv.pop())
     else:
       path = arg
   # If env is not provided, register it with args binded from config_file
