@@ -2,8 +2,8 @@ from siamrl import envs
 from siamrl import nets
 from siamrl import agents
 from siamrl.baselines import Baseline
-from siamrl.train import Training
-from siamrl.test import load_policy
+# from siamrl.train import Training
+# from siamrl.test import load_policy
 from siamrl import external_configurables
 
 MAJOR_VERSION = 1
