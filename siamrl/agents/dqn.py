@@ -446,38 +446,42 @@ class DQN(tf.Module):
       #   dtype=q_values.dtype
       # )
       # Compute target Q values
-      target_q_values = self._target_q_net(next_states)
-      if self._double:
-        target_q_values = tf.reduce_sum(
-          target_q_values*tf.one_hot(
-            tf.math.argmax(self._q_net(next_states), axis=-1), 
-            self._n_actions
-          ),
-          axis=-1,
-        )
-        # target_q_values = tf.map_fn(
-        #   lambda i: i[0][i[1]],
-        #   (
-        #     target_q_values, 
-        #     self.policy(next_states)
-        #   ),
-        #   dtype=q_values.dtype
-        # )
+      if self._gamma == 0 and not self._n_step:
+        target_q_values = rewards
       else:
-        target_q_values = tf.reduce_max(
-          target_q_values,
-          axis=-1
+        target_q_values = self._target_q_net(next_states)
+        if self._double:
+          target_q_values = tf.reduce_sum(
+            target_q_values*tf.one_hot(
+              tf.math.argmax(self._q_net(next_states), axis=-1), 
+              self._n_actions
+            ),
+            axis=-1,
+          )
+          # target_q_values = tf.map_fn(
+          #   lambda i: i[0][i[1]],
+          #   (
+          #     target_q_values, 
+          #     self.policy(next_states)
+          #   ),
+          #   dtype=q_values.dtype
+          # )
+        else:
+          target_q_values = tf.reduce_max(
+            target_q_values,
+            axis=-1
+          )
+        if self._n_step:
+          rewards = tf.reduce_sum(
+            self._gamma_r*rewards, 
+            axis=-1
+          )
+        target_q_values = rewards + tf.where(
+          terminal, 
+          0., 
+          self._gamma*target_q_values
         )
-      if self._n_step:
-        rewards = tf.reduce_sum(
-          self._gamma_r*rewards, 
-          axis=-1
-        )
-      target_q_values = rewards + tf.where(
-        terminal, 
-        0., 
-        self._gamma*target_q_values
-      )
+       
       # Compute temporal difference error
       td = q_values - tf.stop_gradient(target_q_values)
       mtd = tf.reduce_mean(td)
