@@ -17,6 +17,127 @@ except ImportError:
 
 from siamrl.envs import data
 
+def create(
+  n,
+  subdivisions=2,
+  max_radius=0.0625,
+  factor=0.2,
+  density=(2200,2600),
+  directory='',
+  name='object',
+  seed=None,
+  show=False,
+  start_index=0
+):
+  """Generates objects from an icosphere, by applying some randomly
+    parametrized transformations (rotation, vertices displacement along 
+    normal direction, directional scaling). Two files (.obj and .urdf) 
+    are saved for each model.
+  Args:
+    n: number of objects to be generated.
+    subdivisions: subdivisions parameter of the icosphere
+    max_radius: all objects fit within a sphere of this radius.
+    convex: whether the meshes must be convex, if true the convex
+      hull is used as the mesh
+    density: used for the model mass and inertia. Either a scalar
+      or a tuple with the limits of a uniform random distribution
+    directory: path to the location where to save the models.
+    name: name of the models (to be suffixed with an index).
+    seed: seed of the random generator.
+    show: whether to show a visualization of each model.
+    start_index: index of the first generated object. Used to generate
+      objects on a directory without overwriting previous ones. 
+  """
+  # Load the template urdf
+  with data.open('template.urdf') as f:
+      urdf = f.read()
+
+  index_format = '%0'+str(int(np.log10(n-1))+1)+'d'
+
+  random.seed(seed)
+  for i in range(start_index, start_index+n):
+    # Create icosphere mesh with max radius and given subdivisions
+    mesh = creation.icosphere(
+      subdivisions=subdivisions, 
+      radius=factor*max_radius,
+    )
+    # Apply random vertex displacement in normal direction
+    mesh.vertices += np.random.triangular(
+      -factor*max_radius,
+      0, 
+      (1-factor)*max_radius, 
+      (len(mesh.vertices),1)
+    )*mesh.vertex_normals
+    # Get the convex hull
+    mesh = mesh.convex_hull
+    # pylint: disable=no-member
+    bb = mesh.bounding_box_oriented
+
+    # Center mesh and align the oriented bounding box
+    mesh.apply_translation(-mesh.center_mass)
+    mesh.apply_transform(bb.principal_inertia_transform)
+
+    # Apply a random scaling in direction of the smaller extent of the 
+    # bounding box. Assert the scaling makes the ratio between the larger
+    # and smaller extents less or equal to 0.5, and no less than factor.
+    max_f = min(1., 0.5*max(bb.extents)/min(bb.extents))
+    min_f = min(1., factor*max(bb.extents)/min(bb.extents))
+    if min_f == max_f:
+      f = min_f
+    else:
+      f = np.random.triangular(
+        min_f,
+        max(min(1-factor, max_f), min_f),
+        max_f, 
+      )
+
+    mesh.apply_transform(transformations.scale_matrix(
+      factor=f,
+      direction=(1,0,0),
+    ))
+
+    # Realign and rotate to make z the principal inertia axis.
+    mesh.apply_translation(-mesh.center_mass)
+    mesh.apply_transform(mesh.principal_inertia_transform)
+    mesh.apply_transform(transformations.rotation_matrix(
+      angle=np.pi/2, 
+      direction=[0,1,0]
+    ))
+    # Repeat to correct residual translation due to rotations
+    mesh.apply_translation(-mesh.center_mass) 
+
+    mesh.process()
+    assert mesh.is_watertight
+    if show:
+      mesh.show()
+
+    # Set density
+    if len(density) > 1:
+      mesh.density = float(random.randint(density[0], density[1]))
+    else:
+      mesh.density = density
+
+    name_i = name+index_format%i
+    # Export mesh to .obj file
+    filename = os.path.join(directory, name_i+'.obj')
+    with open(filename, 'w') as f:
+      mesh.export(file_obj=f, file_type='obj')
+    # Create .urdf file from template with mesh specs
+    filename = os.path.join(directory, name_i+'.urdf')
+    with open(filename, 'w') as f:
+      f.write(urdf.format(
+          name_i, 
+          0.6,
+          mesh.mass,
+          mesh.moment_inertia[0,0],
+          mesh.moment_inertia[0,1],
+          mesh.moment_inertia[0,2],
+          mesh.moment_inertia[1,1],
+          mesh.moment_inertia[1,2],
+          mesh.moment_inertia[2,2],
+          name_i+'.obj',
+          name_i+'.obj'))
+
 def from_box(
   n,
   mode_extents=(0.1,0.075,0.05),
@@ -144,7 +265,6 @@ def from_icosphere(
       urdf = f.read()
 
   index_format = '%0'+str(int(np.log10(n-1))+1)+'d'
-
   random.seed(seed)
   for i in range(start_index, start_index+n):
     # Create icosphere mesh with max radius and given subdivisions
@@ -250,6 +370,6 @@ if __name__ == '__main__':
   n_test = int(n*split)
   n_train = n - n_test
   seed_test = seed+1 if seed is not None else None
-  from_icosphere(n=n_train, directory=directory, name='train', seed=seed)
-  from_icosphere(n=n_test, directory=directory, name='test', seed=seed_test)
+  create(n=n_train, directory=directory, name='train', seed=seed)
+  create(n=n_test, directory=directory, name='test', seed=seed_test)
   
