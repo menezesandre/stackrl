@@ -24,7 +24,7 @@ def test(
   sleep = 1. if sleep > 1 else 0. if sleep < 0 else sleep
 
   env = gym.make(env_id, use_gui=gui)
-  policies = load_policy(env.observation_space, path=path, iters=iters, debug=True)
+  policies = load_policy(env.observation_space, path=path, iters=iters, value=True)
   if not isinstance(policies, list):
     policies = [policies]
     iters = [iters]

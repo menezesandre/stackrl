@@ -20,10 +20,19 @@ def get_space_attr(space, attr='shape'):
       value = np.array(value) 
     return value
 
-def get_space_spec(space):
-  """Returns a (possibly nested) TensorSpec with space's shape and dtype."""
+def get_space_spec(space, remove_first_dim=None):
+  """Returns a (possibly nested) TensorSpec with space's shape and dtype.
+  Args:
+    space: to take the TensorSpec from.
+    remove_first_dim: Either a boolean indicating whether the space shape's
+      leading dimension should be removed, or an integer indicating the 
+      number of leading dimensions to be removed. If None, at most 3 
+      dimensions (i.e. height, width, depth) are kept. Use to remove batch 
+      dimension if necessary.
+  """
+  remove_first_dim = -3 if remove_first_dim is None else int(remove_first_dim)
   return tf.nest.map_structure(
-    lambda s,d: tf.TensorSpec(shape=s, dtype=d), 
+    lambda s,d: tf.TensorSpec(shape=s[remove_first_dim:], dtype=d), 
     get_space_attr(space, 'shape'), 
     get_space_attr(space, 'dtype')
   )

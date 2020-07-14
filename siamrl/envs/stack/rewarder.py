@@ -30,10 +30,10 @@ class Rewarder(object):
         as well as spatial information to define the goal.
       goal_size_ratio: size of the goal, given in fractions of the 
         observed space. Either None for completely random dimensions, a 
-        scalar for  constant area or a list with [height, width] for 
-        fixed dimensions.
-      random: random number generator (used method: randint(low, high)).
-        If None, numpy.random is used, no seed defined.
+        scalar for constant area or a tuple with (height fraction, width 
+        fraction) for fixed dimensions. In the later case, goal orientation 
+        is randomly choosen to be horizontal or vertical.
+      seed: seed for the random number generator used to define the goal.
     """
     if isinstance(simulator, Simulator):
       self._sim = simulator
@@ -54,24 +54,25 @@ class Rewarder(object):
     # Set target size
     if not goal_size_ratio:
       self._goal_size = None
-    elif np.isscalar(goal_size_ratio) and \
-      goal_size_ratio > 0 and goal_size_ratio <= 1\
-    :
+    elif (
+      np.isscalar(goal_size_ratio) and
+      goal_size_ratio > 0 and 
+      goal_size_ratio <= 1
+    ):
       self._goal_size = int(goal_size_ratio*self._shape[0]*self._shape[1])
-    elif len(goal_size_ratio) == 2 and \
-      goal_size_ratio[0] > 0 and goal_size_ratio[0] <= 1 and \
-      goal_size_ratio[1] > 0 and goal_size_ratio[1] <= 1\
-    :
-      self._goal_size = [
-        int(goal_size_ratio[0]*self._shape[0]),
-        int(goal_size_ratio[1]*self._shape[1])
-      ]
+    elif (
+      len(goal_size_ratio) == 2 and
+      all([s > 0 and s <= 1 for s in goal_size_ratio])
+    ):
+      self._goal_size = tuple(
+        [int(g*s) for g,s in zip(goal_size_ratio, self._shape)]
+      )
     else:
-      raise ValueError('Invalid value for argument goal_size_ratio')
+      raise ValueError('Invalid value {} for argument goal_size_ratio'.format(goal_size_ratio))
 
     # Initialize goal
     self._goal = np.zeros(self._shape, dtype='float32')
-    self._goal_params = [[0,0],[0,0]]
+    self._goal_params = ((0,0),(0,0))
     self._goal_v = 0.
 
     # Set reward weights and parameters
@@ -89,8 +90,6 @@ class Rewarder(object):
 
     # Set the random number generator
     self._random, seed = seeding.np_random(seed)
-    self._randint = self._random.randint
-
 
   def __call__(self):
     """Returns the reward computed from the current state"""
@@ -155,36 +154,45 @@ class Rewarder(object):
     simulator"""
     size = self._obs.pixel_to_xy(self._goal_params[0])
     offset = self._obs.pixel_to_xy(self._goal_params[1])
-    return self._sim.draw_rectangle(size, offset, [0,1,0])    
+    return self._sim.draw_rectangle(size, offset, (0,1,0))    
 
   def _reset_goal(self):
     """Create new goal"""
     # Target dimensions
     if not self._goal_size:
-      h = self._randint(self._goal_min_h, self._shape[0]+1)
-      w = self._randint(self._goal_min_w, self._shape[1]+1)
+      h = self._random.randint(self._goal_min_h, self._shape[0]+1)
+      w = self._random.randint(self._goal_min_w, self._shape[1]+1)
     elif np.isscalar(self._goal_size):
-      h = self._randint(
-        max(self._goal_min_h, self._goal_size//self._shape[1]),
-        min(self._shape[0]+1, self._goal_size//self._goal_min_w)
-      )
+      h_min = max(self._goal_min_h, self._goal_size//self._shape[1])
+      h_max = min(self._shape[0]+1, self._goal_size//self._goal_min_w)
+      # Make high aspect ratios more likely
+      h = int(self._random.triangular(
+        h_min,
+        h_min if self._random.randint(2) else h_max,
+        h_max,
+      ))
       w = min(max(
         self._goal_min_w,
-        self._goal_size//h),
-        self._shape[1])
+        self._goal_size//h,
+      ),
+        self._shape[1],
+      )
     else:
-      h = self._goal_size[0]
-      w = self._goal_size[1]
+      i = self._random.randint(2)
+      h = min(self._goal_size[i], self._shape[0])
+      w = min(self._goal_size[1-i], self._shape[1])
 
     # Target offset
     u_max = self._shape[0] - h
-    u = self._randint(
+    u = self._random.randint(
       u_max//self.margin_factor,
-      (self.margin_factor-1)*u_max//self.margin_factor+1)
+      (self.margin_factor-1)*u_max//self.margin_factor+1
+    )
     v_max = self._shape[1] - w
-    v = self._randint(
+    v = self._random.randint(
       v_max//self.margin_factor,
-      (self.margin_factor-1)*v_max//self.margin_factor+1)
+      (self.margin_factor-1)*v_max//self.margin_factor+1
+    )
 
     self._goal = np.zeros(self._shape, dtype='float32')
     self._goal[u:u+h,v:v+w] = self._goal_z

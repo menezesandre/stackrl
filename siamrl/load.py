@@ -4,6 +4,7 @@ import gin
 import gym
 import numpy as np
 
+from siamrl import agents
 from siamrl import envs
 from siamrl import nets
 
@@ -12,7 +13,7 @@ def load_policy(
   path='.', 
   iters=None, 
   config_file=None, 
-  debug=False
+  value=False,
 ):
   # Parse config file
   if not config_file:
@@ -28,8 +29,12 @@ def load_policy(
     raise FileNotFoundError("Couldn't find '{}'".format(config_file))
   # Set observation spec
   if isinstance(observation_spec, gym.Space):
+    batch = len(observation_spec[0].shape) == 4
     observation_spec = envs.utils.get_space_spec(observation_spec)
     py = True
+  else:
+    batch = False
+    py = False
 
   if os.path.isdir(os.path.join(path,'saved_weights')):
     if iters is not None:
@@ -48,6 +53,10 @@ def load_policy(
       iters = int(iters[i])
       # print('Iters: {}'.format(iters))
       paths = [os.path.join(path,'saved_weights', str(iters))]
+    else:
+      paths = [path]
+  else:
+    paths = [path]
 
   policies = []
   for path in paths:
@@ -55,9 +64,9 @@ def load_policy(
       raise FileNotFoundError("Couldn't find '{}'".format(path))
     net = nets.PseudoSiamFCN(observation_spec)
     net.load_weights(os.path.join(path,'weights'))
-    policy = GreedyPolicy(net, debug=debug)
+    policy = agents.policies.Greedy(net, value=value, batchwise=batch)
     if py:
-      policy = PyWrapper(policy)
+      policy = agents.policies.PyWrapper(policy, batched=batch)
     policies.append(policy)
 
   if len(policies) == 1:

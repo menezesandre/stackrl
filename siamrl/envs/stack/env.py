@@ -1,12 +1,12 @@
 import gin
 import gym
 from gym import spaces
-from gym.utils import seeding
 from gym.envs import registry
+from gym.utils import seeding
 import numpy as np
 
 from siamrl.envs import data
-from siamrl.envs.stack.simulator import Simulator
+from siamrl.envs.stack.simulator import Simulator, TestSimulator
 from siamrl.envs.stack.observer import Observer
 from siamrl.envs.stack.rewarder import Rewarder
 from siamrl.baselines import Baseline
@@ -16,7 +16,7 @@ try:
 except ImportError:
   plt = None
 
-DEFAULT_EPISODE_LENGTH = 24
+DEFAULT_EPISODE_LENGTH = 32
 
 class StackEnv(gym.Env):
   metadata = {
@@ -24,19 +24,23 @@ class StackEnv(gym.Env):
     'render.modes': ['human', 'rgb_array']
   }
 
-  def __init__(self,
+  def __init__(
+    self,
     episode_length=DEFAULT_EPISODE_LENGTH,
     urdfs='train',
     object_max_dimension=0.125,
     use_gui=False,
+    simulator=None,
     sim_time_step=1/60.,
     gravity=9.8,
     num_sim_steps=None,
     velocity_threshold=0.01,
     smooth_placing = True,
+    observer=None,
     observable_size_ratio=4,
     resolution_factor=5,
     max_z=1,
+    rewarder=None,
     goal_size_ratio=.375,
     occupation_ratio_weight=0.,
     occupation_ratio_param=False,
@@ -63,14 +67,21 @@ class StackEnv(gym.Env):
       object_max_dimension: maximum dimension of all objects in the list.
         All objects should be completely visible within a square with this
         value as side length.
-      use_gui: whether to use physics engine gafical interface. 
+      use_gui: whether to use physics engine gafical interface.
+      simulator: constructor for the environment's simulator. If None,
+        Simulator class is used.
       sim_time_step, gravity, num_sim_steps, velocity_threshold, 
         smooth_placing: see Simulator.step.
+      observer: constructor for the environment's observations collector. 
+        If None, Observer class is used.
       observable_size_ratio: size of the observable space as a multiple of
         object_max_dimension. Either a scalar for square space or a list 
         with [height, width] (as seen in the observation).
       resolution_factor: resolution is such that the number of pixels 
         along object_max_dimensions is two to the power of this factor.
+      max_z: See Observer.
+      rewarder: constructor for the environment's reward calculator. If None,
+        Rewarder class is used.
       goal_size_ratio, occupation_ratio_weight, occupation_ratio_param,
         positions_weight, positions_param, n_steps_weight, n_steps_param,
         contact_points_weight, contact_points_param, differential: see 
@@ -81,12 +92,6 @@ class StackEnv(gym.Env):
         'uint8', 'uint16', 'uint32', 'float16', 'float32' or 'float64'. 
         Internaly, float32 is used.
       seed: Seed for the env's random number generator.
-      allow_same_seed: if false, seed used in each instantiation is 
-        stored in a class level list (_seeds). Seed used in this instance
-        is incremented until it doesn't match any of the previously used 
-        seeds. This is useful when using a seed while instantiating 
-        parallel environments (so that parallel observations aren't all 
-        the same).
     """
     self._length = episode_length
     # Set the files list
@@ -107,7 +112,8 @@ class StackEnv(gym.Env):
 
     # Set simulator
     self._gui = use_gui
-    self._sim = Simulator(
+    simulator = simulator or Simulator
+    self._sim = simulator(
       use_gui=use_gui, 
       time_step=sim_time_step, 
       gravity=gravity, 
@@ -129,7 +135,8 @@ class StackEnv(gym.Env):
       ]
     pixel_size = object_max_dimension/object_resolution
 
-    self._obs = Observer(
+    observer = observer or Observer
+    self._obs = observer(
       self._sim,
       overhead_resolution=overhead_resolution,
       object_resolution=object_resolution,
@@ -138,7 +145,8 @@ class StackEnv(gym.Env):
     )
 
     # Set the rewarder.
-    self._rew = Rewarder(
+    rewarder = rewarder or Rewarder
+    self._rew = rewarder(
       self._sim, 
       self._obs,
       goal_size_ratio=goal_size_ratio,
@@ -158,13 +166,13 @@ class StackEnv(gym.Env):
     if dtype not in self.metadata['dtypes']:
       raise ValueError('Invalid value {} for argument dtype.'.format(dtype))
     if dtype == 'uint8':
-      self._return = lambda x: np.array(x*(2**8-1)/max_z, dtype=dtype)
+      self._return = lambda x: np.array(x*(2**8-1)/max(max_z, object_max_dimension), dtype=dtype)
     elif dtype == 'uint16':
-      self._return = lambda x: np.array(x*(2**16-1)/max_z, dtype=dtype)
+      self._return = lambda x: np.array(x*(2**16-1)/max(max_z, object_max_dimension), dtype=dtype)
     elif dtype == 'uint32':
-      self._return = lambda x: np.array(x*(2**32-1)/max_z, dtype=dtype)
+      self._return = lambda x: np.array(x*(2**32-1)/max(max_z, object_max_dimension), dtype=dtype)
     elif dtype == 'uint64':
-      self._return = lambda x: np.array(x*(2**64-1)/max_z, dtype=dtype)
+      self._return = lambda x: np.array(x*(2**64-1)/max(max_z, object_max_dimension), dtype=dtype)
     else:
       self._return = lambda x: np.array(x, dtype=dtype)
 
@@ -237,7 +245,7 @@ class StackEnv(gym.Env):
 
     # Run simulation with given action.
     self._sim(
-      position=self._obs.position(action), 
+      **self._obs.pose(action), 
       urdf=urdf,
       smooth_placing=self._smooth_placing
     )
@@ -404,6 +412,117 @@ class StartedStackEnv(StackEnv):
       o,_,_,_=self.step(self._start_policy(o))
     return o
 
+class TestStackEnv(StackEnv):
+  def __init__(
+    self,
+    ordering_freedom=True,
+    orientation_freedom=3,
+    **kwargs
+  ):
+    """
+    Args:
+      ordering_freedom: If True, all objects are presented at the begining
+        of the episode and the action includes the choice of the object 
+        to be placed.
+      orientation_freedom: See Observer
+    """
+    super(TestStackEnv, self).__init__(
+      simulator=TestSimulator if ordering_freedom else Simulator, 
+      observer=lambda *a,**k: Observer(*a, **k, orientation_freedom=orientation_freedom),
+      **kwargs,
+    )
+    self._ordering_freedom = ordering_freedom
+    self._obs_high = (
+      self.observation_space[0].high.ravel()[0],
+      self.observation_space[0].high.ravel()[0]
+    )
+    self.action_space = spaces.Tuple((spaces.Discrete(0),self.action_space))
+    self._update_spaces()
+
+  @property
+  def observation(self):
+    """Agent's observation of the environment state."""
+    m,n = self._obs.state
+    g = self._rew.goal
+    return (
+      self._return(np.array([np.stack([m,g],axis=-1)]*len(n))),
+      self._return(np.array(n).reshape(self.observation_space[1].shape))
+    )
+
+  def step(self, action):
+    # Reset if necessary.
+    if self._done:
+      return self.reset(), 0., False, {}
+    # Assert action is valid
+    assert self.action_space.contains(action), 'Invalid action.'
+    # Split index and position
+    index, action = action
+    # Unflatten action if necessary.
+    if self._action_width:
+      action = [action//self._action_width, action%self._action_width]
+    # Run simulation with given action.
+    if not self._ordering_freedom:
+      if self._episode_list:
+        urdf = self._episode_list.pop()
+      else:
+        urdf = None
+        self._done = True
+    else: 
+      urdf = None
+    self._sim(
+      **self._obs.pose(action, index=index), 
+      smooth_placing=self._smooth_placing,
+      urdf=urdf,
+    )
+    # Get observation of the new state.
+    self._obs()
+    
+    if self._obs.num_objects == 0:
+      self._done = True
+    self._update_spaces()
+    # Compute reward.
+    reward = self._rew()
+    return self.observation, reward, self._done, {}
+
+  def reset(self):
+    # Get episode's list of urdfs
+    episode_list = list(self._random.choice(
+      self._list, 
+      size=self._length,
+      replace=self._replace
+    ))
+    # Reset simulator.
+    if self._ordering_freedom:
+      self._sim.reset(episode_list)
+    else:
+      self._sim.reset(episode_list.pop())
+      self._episode_list = episode_list
+    # Reset rewarder.
+    self._rew.reset()
+    # Get first observation.
+    self._obs()
+
+    # If using GUI, mark observable space and goal.
+    if self._gui:
+      self._obs.visualize()
+      self._rew.visualize()
+
+    self._done = False
+    self._update_spaces()
+    return self.observation
+    
+  def _update_spaces(self):
+    n = self._obs.num_objects
+    for obs, high in zip(self.observation_space, self._obs_high):
+      # Tricky way of safely changing the space shape
+      obs.shape = (n,) + obs.shape[-3:]
+      obs.low = np.full(obs.shape, 0.)
+      obs.high = np.full(obs.shape, high)
+      obs.bounded_below = -np.inf < obs.low
+      obs.bounded_above = np.inf > obs.high
+
+    self.action_space[0].n = n
+
 @gin.configurable(module='siamrl.envs.stack')
 def register(env_id=None, entry_point=None, **kwargs):
   """Register a StackEnv in the gym registry.
@@ -428,6 +547,10 @@ def register(env_id=None, entry_point=None, **kwargs):
   if isinstance(entry_point, str):
     if entry_point.lower() == 'started':
       entry_point = StartedStackEnv
+    elif entry_point.lower() == 'test':
+      entry_point = TestStackEnv
+    else:
+      raise ValueError("Invalid value {} for argument entry_point".format(entry_point))
   elif not callable(entry_point):
     entry_point = StackEnv
 

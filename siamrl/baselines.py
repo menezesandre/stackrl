@@ -10,6 +10,7 @@ import gym
 import numpy as np
 
 from siamrl import envs
+from siamrl.agents import policies
 
 def _trimmed_goal(observation):
   shape = observation[1].shape
@@ -19,7 +20,7 @@ def _trimmed_goal(observation):
   right = shape[1] - left - 1
   return observation[0][top:-bottom, left:-right,1]
 
-def random(observation, flat=True):
+def random(observation):
   return np.random.rand(
     observation[0].shape[0]-observation[1].shape[0]+1,
     observation[0].shape[1]-observation[1].shape[1]+1
@@ -65,13 +66,22 @@ methods = {
   'gradcorr': gradcorr
 }
 
-class Baseline(object):
-  def __init__(self, method='random', flat=True, goal=True, **kwargs):
+class Baseline(policies.PyGreedy):
+  def __init__(
+    self, 
+    method='random', 
+    goal=True, 
+    value=False, 
+    unravel=False,
+    batched=False,
+    batchwise=False,
+    **kwargs,
+  ):
     if isinstance(method, str):
       method = method.lower()
       if method in methods:
-        self._value = methods[method]
-        if self._value is None:
+        method = methods[method]
+        if method is None:
           raise ImportError(
             "opencv-python must be installed to use {} method.".format(
               method
@@ -79,38 +89,43 @@ class Baseline(object):
           )
       else:
         raise ValueError(
-          "Invalid value {} for argument method.".format(method)
+          "Invalid value {} for argument method. Must be in {}".format(method, methods)
         )
-    elif callable(method):
-      self._value = method
-    else:
+    elif not callable(method):
       raise TypeError(
         "Invalid type {} for argument method.".format(type(method))
       )
-    self._flat = bool(flat)
-    self._goal = bool(goal)
-    self._kwargs = kwargs
 
-  def __call__(self, inputs):
-    value = self._value(inputs, **self._kwargs)
-    if self._goal:
-      goal = _trimmed_goal(inputs)
-      value = np.where(
-        goal > 0.,
-        value,
-        -np.inf
-      )
-    best = np.argmax(value)
-    if not self._flat:
-      best = np.array(np.unravel_index(best, value.shape))
-    return best
+    def model(inputs):
+      values = method(inputs, **kwargs)
+      if goal:
+        values = np.where(
+          _trimmed_goal(inputs) > 0.,
+          values,
+          np.min(values) - 1e-12, # slightly smaller than the minimum value
+        )
+      return values
+    
+    super(Baseline, self).__init__(
+      model, 
+      value=value, 
+      unravel=unravel,
+      batched=batched,
+      batchwise=batchwise,
+    )
 
 def test(env_id, method=None, num_steps=1024, verbose=False, gui=False, sleep=0.5, seed=11):
+  env = gym.make(env_id, use_gui=gui, seed=seed)
+  if len(env.observation_space[0].shape) == 4:
+    batched, batchwise = True,True
+  else:
+    batched, batchwise = False,False
+
   if method:
-    policies = {method:Baseline(method=method)}
+    policies = {method:Baseline(method=method, batched=batched, batchwise=batchwise)}
     results=None
   else:
-    policies = {m:Baseline(method=m) for m in methods}
+    policies = {m:Baseline(method=m, batched=batched, batchwise=batchwise) for m in methods}
     policies['random (anywhere)'] = lambda o: env.action_space.sample()
     results={}
 
@@ -118,7 +133,8 @@ def test(env_id, method=None, num_steps=1024, verbose=False, gui=False, sleep=0.
   sleep = 0. if sleep < 0 else sleep
 
   for name, policy in policies.items():
-    env = gym.make(env_id, use_gui=gui, seed=seed)
+    if not env:
+      env = gym.make(env_id, use_gui=gui, seed=seed)
     
     tr = 0.
     ne = 0
@@ -150,6 +166,7 @@ def test(env_id, method=None, num_steps=1024, verbose=False, gui=False, sleep=0.
     if verbose:
       print('Final average: {}'.format(tr/ne))
     del(env)
+    env = None
 
   if results:
     fpath = os.path.join(

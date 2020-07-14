@@ -12,7 +12,6 @@ References:
 import gin
 import tensorflow as tf
 from tensorflow import keras as k
-from siamrl.agents.policies import GreedyPolicy
 from siamrl.agents.memory import ReplayMemory
 
 @gin.configurable(module='siamrl.agents')

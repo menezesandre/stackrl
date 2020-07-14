@@ -1,16 +1,18 @@
-import pybullet as pb
-import numpy as np
 import functools
 
+import numpy as np
+import pybullet as pb
+
 class Simulator(object):
-  def __init__(self,
+  def __init__(
+    self,
     use_gui=False,
     time_step=1/240.,
     gravity=9.8,
-    spawn_position=[0,0,2],
-    spawn_orientation=[0,0,0,1],
+    spawn_position=(0,0,2),
+    spawn_orientation=(0,0,0,1),
     num_steps=None,
-    velocity_threshold=0.01
+    velocity_threshold=0.01,
   ):
     """
     Args:
@@ -33,8 +35,8 @@ class Simulator(object):
     self._connection_mode = pb.GUI if use_gui else pb.DIRECT
     self._time_step = time_step
     self._gravity = gravity
-    self._spawn_position = spawn_position
-    self._spawn_orientation = spawn_orientation
+    self._spawn_position = tuple(spawn_position)
+    self._spawn_orientation = tuple(spawn_orientation)
     self._num_steps = num_steps
     if not num_steps:
       self._velocity_threshold = velocity_threshold
@@ -60,6 +62,15 @@ class Simulator(object):
   @property
   def new_pose(self):
     return self._spawn_position, self._spawn_orientation
+
+  @property
+  def has_new_object(self):
+    """True if any new object was added since last check of this property."""
+    if hasattr(self, '_has_new_object') and self._has_new_object:  # pylint: disable=access-member-before-definition
+      self._has_new_object = False
+      return True
+    else:
+      return False
 
   @property
   def n_steps(self):
@@ -134,7 +145,7 @@ class Simulator(object):
   def step(
     self, 
     position, 
-    orientation=[0,0,0,1], 
+    orientation=(0,0,0,1), 
     urdf=None, 
     smooth_placing=False
   ):
@@ -178,7 +189,7 @@ class Simulator(object):
     except:
       return False
 
-  def draw_rectangle(self, size, offset=[0, 0], rgb=[1, 1, 1]):
+  def draw_rectangle(self, size, offset=(0, 0), rgb=(1, 1, 1)):
     """Create a visual rectangle on the ground plane.
     Args:
       size:  size [length, width] of the rectangle.
@@ -186,18 +197,17 @@ class Simulator(object):
         the rectangle.
       rgba: color [red, green, blue] of the rectangle.
     """
-    rgba=list(rgb)
-    rgba.append(0.5)
+    rgba = tuple(rgb) + (0.5,)
 
     return self.createMultiBody(
       0,
       baseVisualShapeIndex=self.createVisualShape(
         pb.GEOM_BOX,
-        halfExtents=[size[0]/2, size[1]/2, 0],
+        halfExtents=(size[0]/2, size[1]/2, 0),
         rgbaColor=rgba,
-        visualFramePosition=[size[0]/2, size[1]/2, 0]
+        visualFramePosition=(size[0]/2, size[1]/2, 0)
       ),
-      basePosition=[offset[0], offset[1], 0]
+      basePosition=(offset[0], offset[1], 0),
     )
 
   def _load(self, urdf):
@@ -208,6 +218,7 @@ class Simulator(object):
         self._spawn_position, 
         self._spawn_orientation
       )
+      self._has_new_object = True
 
   def _place(self, position, orientation):
     """Reset the new object's pose to given position and orientation."""
@@ -241,3 +252,40 @@ class Simulator(object):
       points, or the stop criterion is achieved"""
     return len(self.getContactPoints(self._objects[-1])) >= 3 \
       or self._stop()
+
+class TestSimulator(Simulator):
+  def __init__(self, **kwargs):
+    super(TestSimulator, self).__init__(**kwargs)
+    
+    self._spawn_offset = np.array((self._spawn_position[-1], 0, 0))
+    self._spawn_position = np.array(self._spawn_position)
+    self._spawn_positions = []
+    self._news = []
+    self._dynamics = []
+
+  @property
+  def new_pose(self):
+    return [(pos, self._spawn_orientation) for pos in self._spawn_positions]
+
+  def reset(self, urdfs):
+    super(TestSimulator, self).reset()
+
+    self._spawn_positions = []
+    self._news = []
+    self._dynamics = []
+
+    for i,urdf in enumerate(urdfs):
+      pos = tuple(self._spawn_position + i*self._spawn_offset)
+      self._spawn_positions.append(pos)
+      new = self.loadURDF(urdf, pos, self._spawn_orientation)
+      self._dynamics.append(self.getDynamicsInfo(new,-1))
+      self.changeDynamics(new, -1, mass=0, localInertiaDiagonal=(0,0,0))
+      self._news.append(new)
+    self._has_new_object = True
+
+  def step(self, index, **kwargs):
+    self._new = self._news.pop(index)
+    self._spawn_positions.pop(index)
+    dynamics = self._dynamics.pop(index)
+    self.changeDynamics(self._new, -1, mass=dynamics[0], localInertiaDiagonal=dynamics[2])
+    super(TestSimulator, self).step(**kwargs)
