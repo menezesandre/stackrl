@@ -4,7 +4,7 @@ import sys
 import gin
 import numpy as np
 
-from siamrl import baselines
+import siamrl
 from siamrl import envs
 
 try:
@@ -12,25 +12,67 @@ try:
 except ImportError:
   plt = None
 
-def read_csv(fname, columns=None):
-  with open(fname) as f:
-    line = f.readline()
-    if line.endswith('\n'):
-      line = line[:-1]
-    keys = line.split(',')
+def read_csv(fname, columns=None, reduction=None):
+  if isinstance(fname, list):
+    data_list = [read_csv(f, columns=columns) for f in fname]
+    if columns is None:
+      # Get columns that are common across all files
+      columns = data_list[0].keys()
+      for d in data_list[1:]:
+        columns &= d.keys()
+    # Get number of common lines
+    length = min([len(d[columns[0]]) for d in data_list])
+    # Get reduction function
+    reduction = reduction or np.mean
+    if isinstance(reduction, str):
+      reduction = getattr(np, reduction)
 
-  if columns is not None:
-    for c in columns:
-      if c not in keys:
-        raise ValueError(
-          "No {} column in {}.".format(c, fname))
+    data = {}
+    for key in columns:
+      array = np.array([
+        d[key][:length] for d in data_list
+      ])
+      
+      data[key] = reduction(array, axis=0)
+      data[key+'_std'] = np.std(array, axis=0)
+    return data
 
-  return {
-    key:value for key, value in zip(
-      keys, 
-      np.loadtxt(fname, delimiter=',', skiprows=1, unpack=True)
-    ) if columns is None or key in columns
-  }
+  else:
+    with open(fname) as f:
+      line = f.readline()
+      if line.endswith('\n'):
+        line = line[:-1]
+      keys = line.split(',')
+
+    if columns is not None:
+      for c in columns:
+        if c not in keys:
+          raise ValueError(
+            "No {} column in {}.".format(c, fname))
+
+    return {
+      key:value for key, value in zip(
+        keys, 
+        np.loadtxt(fname, delimiter=',', skiprows=1, unpack=True)
+      ) if columns is None or key in columns
+    }
+
+def get_save_name(path, name=None, ext='png'):
+  if isinstance(path, list):
+    if name is None:
+      name = os.path.commonprefix([os.path.split(p)[-1] for p in path])
+      name = name.split('.')[0]
+      path = [os.path.dirname(p) for p in path]
+    path = os.path.commonprefix(path)
+  else:
+    if name is None:
+      path, name = os.path.split(path)
+      name = name.split('.')[0]
+
+  if path and path != '.':
+    path, pref = os.path.split(path)
+    name = '{}_{}'.format(pref, name)
+  return os.path.join(path,'plots',ext,'{}.{}'.format(name,ext))
 
 def plot(fname, x_key, y_keys, split=None, baselines=None, show=False, legend='Train', save_as=None):
   if plt is None:
@@ -43,6 +85,10 @@ def plot(fname, x_key, y_keys, split=None, baselines=None, show=False, legend='T
 
   x = data[x_key]
   ys = [data[key] for key in y_keys]
+  try:
+    ys_std = [data[key+'_std'] for key in y_keys]
+  except KeyError:
+    ys_std = None
 
   fig, axs = plt.subplots(len(ys),1,sharex=True)
   if len(ys) == 1:
@@ -84,14 +130,32 @@ def plot(fname, x_key, y_keys, split=None, baselines=None, show=False, legend='T
         ax.plot(xi,yi)
     legend = ['{} part {}'.format(legend, i) for i in range(len(split_x))]
   else:
-    for ax, y in zip(axs, ys):
-      ax.plot(x, y)
+    if ys_std is None:
+      for ax, y in zip(axs, ys):
+        ax.plot(x, y)
+    else:
+      for ax, y, y_std in zip(axs, ys, ys_std):
+        ax.plot(x, y)
+        ax.fill_between(x, y+y_std, y-y_std, alpha=0.25)
+
     legend = [legend]
 
+      
   if baselines:
     for key in baselines:
       axs[-1].plot([x[0], x[-1]],[baselines[key]]*2)
       legend.append(key.capitalize())
+    i = np.argmax(ys[-1])
+    axs[-1].annotate(
+      'Best: {:.6}'.format(ys[-1][i]), 
+      (x[i], ys[-1][i]),
+      xytext=(.8, 1.05),
+      textcoords='axes fraction',
+      arrowprops={'arrowstyle':'simple'}
+    )
+
+  if ys_std:
+    legend.append('Std deviation')
 
   if len(legend) > 1:
     plt.legend(legend, loc='best')
@@ -113,63 +177,75 @@ def plot(fname, x_key, y_keys, split=None, baselines=None, show=False, legend='T
 
   axs[-1].set_xlabel(x_key)
 
-  if save_as is None:
-    if not show:
-      path, name = os.path.split(fname)
-      name = name.split('.')[0]
-      if path and path != '.':
-        path, pref = os.path.split(path)
-        name = '{}_{}'.format(pref, name)
-      for ext in ['png', 'pdf']:
-        plt.savefig(os.path.join(path,'plots',ext,'{}.{}'.format(name,ext)))
-  else:
+  if save_as:
     plt.savefig(save_as)
+  elif not show:
+    for ext in ['png', 'pdf']:
+      plt.savefig(get_save_name(fname,ext=ext))
+
   if show:
     plt.show()
   else:
     plt.close()
 
-def plot_value(path, show=False):
+def plot_value(path, show=False, save_as=None):
+  if isinstance(path, list):
+    fname = [os.path.join(p, 'eval.csv') for p in path]
+  else:
+    fname = os.path.join(path, 'eval.csv')
   data = read_csv(
-    os.path.join(path, 'eval.csv'),
+    fname,
     ['Iter','MeanValue','StdValue','MinValue','MaxValue'],
   )
 
   plt.plot(
-    data['Iter'], data['MeanValue'], '-b',
-    data['Iter'], data['MeanValue'] + data['StdValue'], '--b',
-    data['Iter'], data['MaxValue'], ':b',
-    data['Iter'], data['MeanValue'] - data['StdValue'], '--b',
-    data['Iter'], data['MinValue'], ':b',
-  )
-  plt.legend(['mean', '+/- std dev', 'max/min'])
+    data['Iter'], data['MeanValue'], '-b')
+
+  plt.fill_between(data['Iter'], data['MeanValue'] + data['StdValue'], data['MeanValue'] - data['StdValue'], facecolor='b', alpha=0.25)
+  plt.fill_between(data['Iter'], data['MaxValue'], data['MinValue'], facecolor='b', alpha=0.125)
+  plt.legend(['mean', 'std dev', 'range'])
   plt.xlabel('Iter')
   plt.ylabel('Q value')
 
-  path, name = os.path.split(path)
-  if name and name != '.':
-    name += '_q_value'
-  else:
-    name = 'q_value'
-  for ext in ['png','pdf']:
-    plt.savefig(os.path.join(path,'plots',ext,'{}.{}'.format(name,ext)))
+  if save_as:
+    plt.savefig(save_as)
+  elif not show:
+    for ext in ['png','pdf']:
+      plt.savefig(get_save_name(path, name='q_value', ext=ext))
   if show:
     plt.show()
   else:
     plt.close()
 
 def plot_train(path, **kwargs):
+  if isinstance(path, list):
+    fname = [os.path.join(p, 'train.csv') for p in path]
+    split = None
+  else:
+    fname = os.path.join(path, 'train.csv')
+    split = os.path.join(path, 'curriculum.csv')
+  
   return plot(
-    fname=os.path.join(path, 'train.csv'),
+    fname=fname,
     x_key='Iter',
     y_keys=['Loss', 'Reward'],
-    split=os.path.join(path, 'curriculum.csv'),
+    split=split,
     **kwargs,
   )
 
-def plot_eval(path, value=False, **kwargs):
+def plot_eval(path, value=False, all_baselines=False, **kwargs):
+
+  if isinstance(path, list):
+    fname = [os.path.join(p, 'eval.csv') for p in path]
+    split = None
+    config_file = os.path.join(path[0], 'config.gin')
+  else:
+    fname = os.path.join(path, 'eval.csv')
+    split = os.path.join(path, 'curriculum.csv')
+    config_file = os.path.join(path, 'config.gin')
+
   try:
-    gin.parse_config_file(os.path.join(path, 'config.gin'))
+    gin.parse_config_file(config_file)
     env_id = envs.stack.register()
   except OSError:
     env_id = None
@@ -193,16 +269,25 @@ def plot_eval(path, value=False, **kwargs):
           line = line.split(':')
           baselines[line[0]] = float(line[1])
     else:
-      baselines = baselines.test(env_id)
+      baselines = siamrl.baselines.test(env_id)
+    if not all_baselines:
+      keymax = max(baselines, key=baselines.get)
+      keymin = min(baselines, key=baselines.get)
+      baselines = {
+        keymax:baselines[keymax],
+        keymin:baselines[keymin],
+      }
+
   else:
     baselines = None 
 
   y_keys = ['Value', 'Reward'] if value else ['Reward']
+
   return plot(
-    fname=os.path.join(path, 'eval.csv'),
+    fname=fname,
     x_key='Iter',
     y_keys=y_keys,
-    split=os.path.join(path, 'curriculum.csv'),
+    split=split,
     baselines=baselines,
     **kwargs,
   )
@@ -223,6 +308,8 @@ if __name__ == '__main__':
     if arg == '-v':
       value = True
     else:
+      if ',' in arg:
+        arg = arg.split(',')
       paths.append(arg)
 
   for path in paths:
