@@ -142,7 +142,7 @@ def test(env_id, method=None, num_steps=1024, verbose=False, gui=False, sleep=0.
 
     if gui:
       import pybullet as pb
-      pb.resetDebugVisualizerCamera(1., 90, -30, [0.25,0.25,0])
+      pb.resetDebugVisualizerCamera(1., 90, -45, (0.25,0.25,0))
       time.sleep(5*sleep)
     
     if verbose:

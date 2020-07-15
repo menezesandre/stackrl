@@ -60,7 +60,7 @@ def test(
 
     if gui:
       import pybullet as pb
-      pb.resetDebugVisualizerCamera(1., 90, -30, [0.25,0.25,0])
+      pb.resetDebugVisualizerCamera(1., 90, -45, [0.25,0.25,0])
       time.sleep(5*sleep)
   
     for n in range(num_steps):
