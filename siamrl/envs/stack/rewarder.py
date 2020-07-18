@@ -110,10 +110,12 @@ class Rewarder(object):
       self._pr = 0.
       for p in self._sim.positions:
         u,v = self._obs.xy_to_pixel(p[:2])
-        if u >= self._goal_params[1][0] and v >= self._goal_params[1][1] \
-          and u < self._goal_params[1][0]+self._goal_params[0][0] \
-          and v < self._goal_params[1][1]+self._goal_params[0][1] \
-        :
+        if (
+          u >= self._goal_params[1][0] and 
+          v >= self._goal_params[1][1] and 
+          u < self._goal_params[1][0]+self._goal_params[0][0] and
+          v < self._goal_params[1][1]+self._goal_params[0][1]
+        ):
           self._pr += 1.
         else:
           self._pr -= self._pr_p

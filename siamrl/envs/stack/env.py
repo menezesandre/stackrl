@@ -95,8 +95,13 @@ class StackEnv(gym.Env):
     """
     self._length = episode_length
     # Set the files list
+    urdfs = urdfs or {}
     if isinstance(urdfs, str):
-      self._list = data.generated(urdfs)
+      self._list = data.generated(name=urdfs)
+    elif isinstance(urdfs, float):
+      self._list = data.generated(rectangularity=urdfs)
+    elif isinstance(urdfs, dict):
+      self._list = data.generated(**urdfs)
     else:
       self._list = list(urdfs)
     # Assert the list is not empty

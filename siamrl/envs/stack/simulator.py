@@ -81,14 +81,47 @@ class Simulator(object):
   @property
   def positions(self):
     """List of objects' positions."""
-    return [self.getBasePositionAndOrientation(i)[0] 
-      for i in self._objects]
+    return [p[0] for p in self._final_poses] if hasattr(self, '_final_poses') else []
 
   @property
   def poses(self):
     """List of objects' poses (position, orientation)."""
-    return [self.getBasePositionAndOrientation(i)
-      for i in self._objects]
+    return self._final_poses if hasattr(self, '_final_poses') else []
+
+  @property
+  def distances(self):
+    """List of distances (translation, rotation) between the positions of
+      each object at the beginning and at the end of the last simulator 
+      step."""
+    if hasattr(self, '_distances') and self._distances is not None:
+      return self._distances
+    elif hasattr(self, '_initial_poses') and hasattr(self, '_final_poses'):
+      self._distances = []
+      for (ip,io), (fp,fo) in zip(self._initial_poses, self._final_poses):
+        dp = np.linalg.norm(np.subtract(ip, fp))
+        do = 2*np.arccos(min(self.getDifferenceQuaternion(io, fo)[-1], 1.))
+        self._distances.append((dp, do))
+
+      return self._distances
+    else:
+      return []
+
+  @property
+  def distances_from_place(self):
+    """List of distances (translation, rotation) between the original 
+      placing positions of each object and at their current position."""
+    if hasattr(self, '_distances_from_place') and self._distances_from_place is not None:
+      return self._distances_from_place
+    elif hasattr(self, '_place_poses') and hasattr(self, '_final_poses'):
+      self._distances_from_place = []
+      for (ip,io), (fp,fo) in zip(self._place_poses, self._final_poses):
+        dp = np.linalg.norm(np.subtract(ip, fp))
+        do = 2*np.arccos(min(self.getDifferenceQuaternion(io, fo)[-1], 1.))
+        self._distances_from_place.append((dp, do))
+
+      return self._distances_from_place
+    else:
+      return []
 
   @property
   def contact_points(self):
@@ -140,6 +173,12 @@ class Simulator(object):
     )
 
     self._objects = []
+
+    self._place_poses = []
+    self._initial_poses = []
+    self._final_poses = []
+    self._distances = None
+    self._distances_from_place = None
     self._load(urdf)
 
   def step(
@@ -174,10 +213,27 @@ class Simulator(object):
         self.stepSimulation()
         self._steps_counter[0] +=1
 
+    # Store the pose where the object was originally placed
+    self._place_poses.append(self.getBasePositionAndOrientation(self._objects[-1]))
+    # Get poses of all objects at the beggining of the simulator step.
+    self._initial_poses = [
+      self.getBasePositionAndOrientation(i)
+      for i in self._objects
+    ]
+
     self._steps_counter[1] = 0
     while not self._stop():
       self.stepSimulation()
       self._steps_counter[1] += 1
+
+    # Get poses of all objects at the end of the simulator step.
+    self._final_poses = [
+      self.getBasePositionAndOrientation(i)
+      for i in self._objects
+    ]
+    # Set distances as None so that they are recalculated.
+    self._distances = None
+    self._distances_from_place = None
 
     self._load(urdf)
   
