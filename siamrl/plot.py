@@ -11,6 +11,10 @@ try:
   import matplotlib.pyplot as plt
 except ImportError:
   plt = None
+try:
+  from scipy import ndimage
+except ImportError:
+  ndimage = None
 
 def read_csv(fname, columns=None, reduction=None):
   if isinstance(fname, list):
@@ -74,7 +78,7 @@ def get_save_name(path, name=None, ext='png'):
     name = '{}_{}'.format(pref, name)
   return os.path.join(path,'plots',ext,'{}.{}'.format(name,ext))
 
-def plot(fname, x_key, y_keys, split=None, baselines=None, show=False, legend='Train', save_as=None):
+def plot(fname, x_key, y_keys, smooth=0, split=None, baselines=None, show=False, legend='Train', save_as=None):
   if plt is None:
     raise ImportError("matplotlib must be installed to run plot.")
 
@@ -84,11 +88,33 @@ def plot(fname, x_key, y_keys, split=None, baselines=None, show=False, legend='T
   data = read_csv(fname, [x_key]+y_keys)
 
   x = data[x_key]
-  ys = [data[key] for key in y_keys]
-  try:
-    ys_std = [data[key+'_std'] for key in y_keys]
-  except KeyError:
-    ys_std = None
+  if smooth:
+    if ndimage is None:
+      raise ImportError("scipy must be installed to run plot with smooth!=0.")
+
+    ys = [
+      ndimage.gaussian_filter1d(
+        data[key], 
+        smooth,
+        mode='nearest',
+      ) for key in y_keys
+    ]
+    try:
+      ys_std = [
+        ndimage.gaussian_filter1d(
+          data[key+'_std'], 
+          smooth,
+          mode='nearest',
+        ) for key in y_keys
+      ]
+    except KeyError:
+      ys_std = None
+  else:
+    ys = [data[key] for key in y_keys]
+    try:
+      ys_std = [data[key+'_std'] for key in y_keys]
+    except KeyError:
+      ys_std = None
 
   fig, axs = plt.subplots(len(ys),1,sharex=True)
   if len(ys) == 1:
@@ -126,25 +152,23 @@ def plot(fname, x_key, y_keys, split=None, baselines=None, show=False, legend='T
 
         
     for ax, split_y in zip(axs, split_ys):
-      for xi,yi in zip(split_x, split_y):
-        ax.plot(xi,yi)
-    legend = ['{} part {}'.format(legend, i) for i in range(len(split_x))]
+      for i,(xi,yi) in enumerate(zip(split_x, split_y)):
+        ax.plot(xi,yi, label='{} part {}'.format(legend,i))
+    # legend = ['{} part {}'.format(legend, i) for i in range(len(split_x))]
   else:
     if ys_std is None:
       for ax, y in zip(axs, ys):
-        ax.plot(x, y)
+        ax.plot(x, y, label=legend)
     else:
       for ax, y, y_std in zip(axs, ys, ys_std):
-        ax.plot(x, y)
-        ax.fill_between(x, y+y_std, y-y_std, alpha=0.25)
-
-    legend = [legend]
+        ax.plot(x, y, label=legend)
+        ax.fill_between(x, y+y_std, y-y_std, alpha=0.25, label='Std deviation')
 
       
   if baselines:
     for key in baselines:
-      axs[-1].plot([x[0], x[-1]],[baselines[key]]*2)
-      legend.append(key.capitalize())
+      axs[-1].plot([x[0], x[-1]],[baselines[key]]*2, label=key.capitalize())
+      # legend.append(key.capitalize())
     i = np.argmax(ys[-1])
     axs[-1].annotate(
       'Best: {:.6}'.format(ys[-1][i]), 
@@ -154,12 +178,13 @@ def plot(fname, x_key, y_keys, split=None, baselines=None, show=False, legend='T
       arrowprops={'arrowstyle':'simple'}
     )
 
-  if ys_std:
-    legend.append('Std deviation')
+  # if ys_std:
+  #   legend.append('Std deviation')
 
-  if len(legend) > 1:
-    plt.legend(legend, loc='best')
-
+  # if len(legend) > 1:
+  #   plt.legend(legend, loc='best')
+  if baselines or ys_std:
+    plt.legend(loc='best')
   for ax, key, y in zip(axs, y_keys, ys):
     ax.set_ylabel(key)
     ylim = ax.get_ylim()
@@ -229,6 +254,7 @@ def plot_train(path, **kwargs):
     fname=fname,
     x_key='Iter',
     y_keys=['Loss', 'Reward'],
+    smooth=15,
     split=split,
     **kwargs,
   )

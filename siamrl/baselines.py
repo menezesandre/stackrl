@@ -175,7 +175,6 @@ def test(env_id, method=None, num_steps=1024, verbose=False, gui=False, sleep=0.
       'data',
       'baselines',
       envs.utils.as_path(env_id),
-      'results',
     )
     fname = os.path.join(fpath, 'results')
     if not os.path.isdir(fpath):
