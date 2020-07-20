@@ -74,6 +74,7 @@ def generated(
   if not flist:
     flist = files(os.path.join( 
       directory,
+      'compat',
       name+'*.urdf',
     ))
 
