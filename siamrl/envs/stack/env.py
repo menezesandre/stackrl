@@ -582,6 +582,7 @@ def curriculum(goals=[], ckwargs={}, **kwargs):
     List of tuples with registered environment ids and
     respective goals.
   """
+  # TODO: Get goals from baseline results if not provided.
   ids = []
   # Turn dict of lists to list of dicts
   ckwargs = [dict(zip(ckwargs,values)) for values in zip(*ckwargs.values())]
