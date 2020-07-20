@@ -16,15 +16,11 @@ except ImportError:
 
 from siamrl.envs import data
 
-NAME_FROM_RECTANGULARITY = 0
-NAME_FROM_ASPECTRATIO = 1
-NAME_FROM_SHAPE = 2
-
 def irregular(
   subdivisions=2,
   radius=0.0625,
   factor=0.1,
-  random=None
+  seed=None,
 ):
   """Generates a mesh from an icosphere, by applying some randomly
     parametrized transformations.
@@ -35,10 +31,10 @@ def irregular(
     factor: ratio of the maximum radius that corresponds to the 
       mode distance from vertice to center. A smaller factor allows
       greater irregularity.
-    random: random number generator to be used. If None, np.random
-      is used.
+    seed: seed for the random number generator, or generator to be 
+      used. 
   """
-  random = random or np.random
+  random = np.random.default_rng(seed)
   # Create icosphere mesh with max radius and given subdivisions
   mesh = creation.icosphere(
     subdivisions=subdivisions, 
@@ -77,26 +73,48 @@ def irregular(
 
 def box(
   radius=0.0625, 
-  irregularity=0., 
-  subdivisions=None,
-  random=None,
+  irregularity=0.2,
+  extents_ratio=0.2, 
+  subdivisions=2,
+  seed=None,
 ):
-  if subdivisions is None:
-    subdivisions = 2 if irregularity < 0.5 else 3
-
-  random = random or np.random
+  random = np.random.default_rng(seed)
 
   mesh = creation.icosphere(subdivisions=subdivisions, radius=radius)
 
-  extents = random.uniform(1e-1, 1., size=(3,))*radius*np.sqrt(3)/3
-  r = np.min(extents/np.abs(mesh.vertices), axis=-1)
+  if np.isscalar(extents_ratio):
+    # extents_ratio is the minimum ratio 
+    extents = radius*np.sqrt(3)/3*random.triangular(
+      extents_ratio,
+      [  # High aspect ratios are more likely
+        extents_ratio, 
+        (extents_ratio+1)/2, 
+        1.
+      ],
+      1.
+    )
+  elif len(extents_ratio) == 3:
+    # Deterministic extents
+    extents = radius*np.sqrt(3)/3*np.array(extents_ratio)/max(extents_ratio)
+  else:
+    raise ValueError("Invalid value {} for argument extents_ratio".format(extents_ratio))
+
+  # Mode of the Beta distribution for the scaling to be aplied to each 
+  # point
+  m = np.min(extents/np.abs(mesh.vertices), axis=-1)
 
   if irregularity > 0.:
-    r = random.triangular(
-        (1-irregularity)*r,
-        r,
-        irregularity + (1-irregularity)*r,
-     )
+    # Concentration (alpha+beta) of the Beta distribution
+    k = 3/irregularity**2 - 1
+    # Alpha parameter
+    a = m*(k-2) + 1
+    # Beta parametar
+    b = (1-m)*(k-2) + 1
+
+    r = random.beta(a,b)
+  else:
+    r = m  
+
   mesh.vertices *= r[:,np.newaxis]
 
   return mesh.convex_hull
@@ -112,11 +130,12 @@ def generate(
   align_obb=False,
   density=(2200,2600),
   directory='',
-  name=NAME_FROM_SHAPE,
+  name=None,
   seed=None,
   show=False,
   start_index=0,
   max_index=None,
+  make_log=True,
   **kwargs,
 ):
   """Generates n pairs of files (.obj and .urdf) from meshes created
@@ -131,15 +150,8 @@ def generate(
     density: used for the model mass and inertia. Either a scalar
       or a tuple with the limits of a uniform random distribution
     directory: path to the location where to save the models.
-    name: name of the models (to be suffixed with an index). Either a
-      string or an int for one of the special cases:
-        NAME_FROM_RECTANGULARITY (0); 
-        NAME_FROM_ASPECT_RATIO (1);
-        NAME_FROM_SHAPE (2).
-      In this case, the name of the files is based on a measure of the
-      obsect's shape: (3D) rectangularity, aspect ratio (between smallest 
-      and largest extents), or both. If None, only the index is used to
-      name the files.
+    name: name of the models (to be suffixed with an index). If None, only
+      the index is used to name the files.
     seed: seed of the random generator.
     show: whether to show a visualization of each model.
     start_index: index of the first generated object. Used to generate
@@ -162,24 +174,32 @@ def generate(
   if not os.path.isdir(directory):
     os.makedirs(directory)
 
-  # Set file naming
-  use_rectangularity = name in [NAME_FROM_RECTANGULARITY, NAME_FROM_SHAPE]
-  use_aspectratio = name in [NAME_FROM_ASPECTRATIO, NAME_FROM_SHAPE]
+  # Set logging
+  if make_log:      
+    log_name = os.path.join(
+      directory, 
+      name+'.csv' if name else 'log.csv'
+    )
+    if start_index and os.path.isfile(log_name):
+      logf = open(log_name, 'a')
+    else:
+      logf = open(log_name, 'w')
+      logf.write('Name,Volume,Rectangularity,AspectRatio\n')
+  else:
+    logf = None
 
-  n = int(n)
-  start_index = int(start_index)
   max_index = max(max_index or n+start_index-1,1)
   name_format = '{:0'+str(int(np.log10(max_index))+1)+'}'
   if isinstance(name, str):
-    name_format = name+name_format
+    name_format = '{}_{}'.format(name, name_format)
   name = lambda i: name_format.format(i)
 
   # Create random number generator.
-  random = np.random.RandomState(seed)
+  random = np.random.default_rng(seed)
 
   for i in range(start_index, start_index+n):
     # Create mesh
-    mesh = method(random=random, **kwargs)
+    mesh = method(seed=random, **kwargs)
     # Align the principal axes with (Z,Y,X).
     if align_obb:
       mesh.apply_obb()
@@ -193,7 +213,7 @@ def generate(
     mesh.apply_translation(-mesh.center_mass) 
 
     mesh.process()
-    # assert mesh.is_watertight
+    assert mesh.is_watertight
 
     # Set density
     if np.isscalar(density):
@@ -204,23 +224,24 @@ def generate(
     if show:
       mesh.show()
 
-    name_i = ''
-    if use_rectangularity:
-      rectangularity = mesh.volume/mesh.bounding_box_oriented.volume
-      name_i += '{:03}_'.format(int(rectangularity*100))
-    if use_aspectratio:
-      extents = mesh.bounding_box.extents
-      aspectratio = max(extents)/min(extents)
-      name_i += '{:03}_'.format(int(aspectratio*10))
+    name_i = name(i)
 
-    name_i += name(i)
+    # Log shape metrics
+    if logf is not None:
+      extents = mesh.bounding_box_oriented.extents
+      logf.write('{},{},{},{}\n'.format(
+        name_i,
+        mesh.volume,
+        mesh.volume/mesh.bounding_box_oriented.volume,
+        max(extents)/min(extents),
+      ))
+
     # Export mesh to .obj file
-    filename = os.path.join(directory, name_i+'.obj')
-    with open(filename, 'w') as f:
+    fname = os.path.join(directory, name_i)
+    with open(fname+'.obj', 'w') as f:
       mesh.export(file_obj=f, file_type='obj')
     # Create .urdf file from template with mesh specs
-    filename = os.path.join(directory, name_i+'.urdf')
-    with open(filename, 'w') as f:
+    with open(fname+'.urdf', 'w') as f:
       f.write(urdf.format(
           name_i, 
           0.6,
@@ -236,7 +257,17 @@ def generate(
 
 if __name__ == '__main__':
   # Default args
-  n,directory,split,seed,show, verbose = 10000, data.path('generated'), 0.01, None, False,True
+  n,directory,split,seed,show, verbose, irregularity, align_obb, extents = (
+    10000, 
+    data.path('generated'), 
+    0.05, 
+    None, 
+    False,
+    True,
+    [0.5],
+    False,
+    0.2,
+  )
   # Parse arguments
   argv = sys.argv[:0:-1]
   while argv:
@@ -249,13 +280,44 @@ if __name__ == '__main__':
       seed = int(argv.pop())
     elif arg == '--show':
       show = True
+    elif arg == '--param':
+      params = argv.pop().split(',')
+      if len(params) == 1:
+        irregularity = [float(params[0])]
+      elif len(params) == 2:
+        start = float(params[0])
+        stop = float(params[1])
+        irregularity = np.arange(start, stop, (start-stop)/10)
+      elif len(params) == 3:
+        irregularity = np.arange(float(params[0]), float(params[1]), float(params[2]))
+      elif len(params) == 4:
+        if params[-1] == 'log':
+          irregularity = np.logspace(
+            np.log10(float(params[0])), 
+            np.log10(float(params[1])), 
+            num=int(params[2]),
+          )
+        else:
+          irregularity = np.logspace(
+            float(params[0]), 
+            float(params[1]), 
+            num=int(params[2]),
+            base=float(params[3]),
+          )
+      else:
+        raise ValueError('Invalid value for --param')
+    elif arg == '--extents':
+      extents = [float(i) for i in argv.pop().split(',')]
+      if len(extents) == 1:
+        extents = extents[0]
+    elif arg == '--obb':
+      align_obb = True
     elif arg == '-q':
       verbose = False
     else:
       n = int(arg)
   
-  irregularity = np.arange(0.,1.,0.05)
-  n_i = n*(1-split)//len(irregularity)
+  n_i = int(n*(1-split)//len(irregularity))
   n_train = n_i*len(irregularity)
 
   n_test = n - n_train
@@ -265,20 +327,44 @@ if __name__ == '__main__':
     from datetime import datetime
     import time
 
-    itime = time.time()
     print('{}: Generating {} objects.'.format(datetime.now(), n))
+    itime = time.perf_counter()
 
   for i, irr in enumerate(irregularity):
-    generate(n=n_i, align_obb=irr<0.5, start_index=i*n_i, max_index=n_train-1, directory=directory, seed=seed, show=show, irregularity=irr)
+    generate(
+      n=n_i, 
+      name='{}'.format(int(round(100*irr))), 
+      align_obb=align_obb, 
+      directory=directory, 
+      seed=seed, 
+      show=show, 
+      irregularity=irr,
+      extents_ratio=extents,
+    )
     if verbose:
       print('{}: {}/{} done.'.format(datetime.now(), (i+1)*n_i, n))
 
   if n_test:
-    generate(n=n_test, directory=os.path.join(directory, 'test'), seed=seed_test, show=show, irregularity=np.max(irregularity))
+    generate(
+      n=n_test, 
+      name='{}'.format(int(100*irr)), 
+      align_obb=align_obb, 
+      directory=os.path.join(directory, 'test'), 
+      seed=seed_test, 
+      show=show, 
+      irregularity=np.max(irregularity),
+      extents_ratio=extents,
+    )
 
+  etime = time.perf_counter() - itime
   if verbose:
-    print('{}: {}/{} done. Total elapsed time: {}s'.format(datetime.now(), n, n, time.time()-itime))
-
+    print('{}: {}/{} done. Total elapsed time: {} s ({} s/object)'.format(
+      datetime.now(),
+      n,
+      n,
+      etime, 
+      etime/n,
+    ))
 
 # def from_box(
 #   n,
