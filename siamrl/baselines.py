@@ -146,7 +146,7 @@ def test(env_id, method=None, num_steps=1024, verbose=False, gui=False, sleep=0.
       time.sleep(5*sleep)
     
     if verbose:
-      print('__ {} __'.format(name))
+      print(name.capitalize())
     for _ in range(num_steps):
       if gui:
         time.sleep(sleep-(datetime.now().microsecond/1e6)%sleep)
