@@ -74,7 +74,7 @@ def irregular(
 def box(
   radius=0.0625, 
   irregularity=0.2,
-  extents_ratio=0.2, 
+  extents_ratio=1/3., 
   subdivisions=2,
   seed=None,
 ):
@@ -82,40 +82,44 @@ def box(
 
   mesh = creation.icosphere(subdivisions=subdivisions, radius=radius)
 
+  # Concentration (alpha+beta) of the Beta distributions
+  k = 3/irregularity**2 - 1 if irregularity > 0 else None
+
   if np.isscalar(extents_ratio):
-    # extents_ratio is the minimum ratio 
-    extents = radius*np.sqrt(3)/3*random.triangular(
-      extents_ratio,
-      [  # High aspect ratios are more likely
-        extents_ratio, 
-        (extents_ratio+1)/2, 
-        1.
-      ],
+    # Modes of the Beta distribution for the extents
+    # (high aspect ratios are more likely)
+    m = np.array([
+      0,
+      max(0, (0.5-extents_ratio)/(1-extents_ratio)),
       1.
-    )
+    ])
+
+    extents = random.beta(
+      m*(k-2) + 1, # alpha
+      (1-m)*(k-2) + 1, # beta
+    ) if k is not None else m
+
+    # Transform from [0, 1] to [extents_ratio, 1]
+    extents = extents_ratio + (1-extents_ratio)*extents
   elif len(extents_ratio) == 3:
     # Deterministic extents
-    extents = radius*np.sqrt(3)/3*np.array(extents_ratio)/max(extents_ratio)
+    extents = np.array(extents_ratio)/max(extents_ratio)
   else:
     raise ValueError("Invalid value {} for argument extents_ratio".format(extents_ratio))
+  # Scale to the size of the inscribed cube.
+  extents *= radius*np.sqrt(3)/3
 
   # Mode of the Beta distribution for the scaling to be aplied to each 
-  # point
+  # point. Corresponds to the values that place each point on the surface
+  # of the box with given extents.
   m = np.min(extents/np.abs(mesh.vertices), axis=-1)
 
-  if irregularity > 0.:
-    # Concentration (alpha+beta) of the Beta distribution
-    k = 3/irregularity**2 - 1
-    # Alpha parameter
-    a = m*(k-2) + 1
-    # Beta parametar
-    b = (1-m)*(k-2) + 1
+  scale = random.beta(
+    m*(k-2) + 1, # alpha
+    (1-m)*(k-2) + 1, # beta
+  ) if k is not None else m
 
-    r = random.beta(a,b)
-  else:
-    r = m  
-
-  mesh.vertices *= r[:,np.newaxis]
+  mesh.vertices *= scale[:,np.newaxis]
 
   return mesh.convex_hull
 
@@ -264,9 +268,9 @@ if __name__ == '__main__':
     None, 
     False,
     True,
-    [0.5],
+    np.arange(0.1,0.6,0.05),
     False,
-    0.2,
+    1/3.,
   )
   # Parse arguments
   argv = sys.argv[:0:-1]
