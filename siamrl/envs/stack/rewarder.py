@@ -178,11 +178,11 @@ class PoseRewarder(Rewarder):
     Args:
       p: tolerance parameter in the interval (0,1] for the translation 
         distance of an object from its original pose. Corresponds to the
-        fraction of the maximum distance at which the discount is 1%. If
+        fraction of the maximum distance at which the discount is 50%. If
         None or 0, no discount is aplied.
       p: tolerance parameter in the interval (0,1] for the rotation 
         distance of an object from its original pose. Corresponds to the
-        fraction of the maximum distance at which the discount is 1%. If
+        fraction of the maximum distance at which the discount is 50%. If
         None or 0, no discount is aplied.
     """
     super(PoseRewarder, self).__init__(*args, **kwargs)
@@ -198,7 +198,7 @@ class PoseRewarder(Rewarder):
       elif p >= 1:
         p = np.inf
       else:
-        p = -2/np.log10(p)
+        p = -1/np.log2(p)
     self._pexp = p
     # Maximum translation distance from original pose (corresponds to the 
     # length of the diagonal of the object image).
@@ -216,7 +216,7 @@ class PoseRewarder(Rewarder):
       elif o >= 1:
         o = np.inf
       else:
-        o = -2/np.log10(o)
+        o = -1/np.log2(o)
     self._oexp = o
     # Maximum rotation distance from original pose
     self._omax = np.pi
@@ -238,10 +238,10 @@ class PoseRewarder(Rewarder):
         r = 1.
         if self._pexp is not None:
           r *= max(0.,
-            (1 - (perr/self._pmax)**self._pexp) )
+            ( 1 - (perr/self._pmax)**self._pexp) )
         if self._oexp is not None:
           r *= max(0.,
-            (1 - (oerr/self._omax)**self._oexp) )
+            ( 1 - (oerr/self._omax)**self._oexp) )
         reward += r
 
 
