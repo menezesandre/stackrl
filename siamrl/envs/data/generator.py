@@ -70,6 +70,7 @@ def irregular(
       # factor=random.uniform(factor/ratio, 1.),
       direction=direction,
     ))
+  return mesh
 
 def box(
   radius=0.0625, 
