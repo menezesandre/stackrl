@@ -8,7 +8,7 @@ import numpy as np
 from siamrl.envs import data
 from siamrl.envs.stack.simulator import Simulator, TestSimulator
 from siamrl.envs.stack.observer import Observer
-from siamrl.envs.stack.rewarder import Rewarder
+from siamrl.envs.stack.rewarder import Rewarder, PoseRewarder, OccupationRatioRewarder
 from siamrl.baselines import Baseline
 
 try:
@@ -21,7 +21,8 @@ DEFAULT_EPISODE_LENGTH = 32
 class StackEnv(gym.Env):
   metadata = {
     'dtypes': ['uint8', 'uint16', 'uint32', 'uint64', 'float16', 'float32', 'float64'],
-    'render.modes': ['human', 'rgb_array']
+    'render.modes': ['human', 'rgb_array'],
+    'rewarders': {'pose': PoseRewarder, 'occupation': OccupationRatioRewarder},
   }
 
   def __init__(
@@ -31,7 +32,7 @@ class StackEnv(gym.Env):
     object_max_dimension=0.125,
     use_gui=False,
     simulator=None,
-    sim_time_step=1/60.,
+    sim_time_step=1/100.,
     gravity=9.8,
     num_sim_steps=None,
     velocity_threshold=0.01,
@@ -41,16 +42,9 @@ class StackEnv(gym.Env):
     resolution_factor=5,
     max_z=1,
     rewarder=None,
-    goal_size_ratio=.375,
-    occupation_ratio_weight=0.,
-    occupation_ratio_param=False,
-    positions_weight=0.,
-    positions_param=0.,
-    n_steps_weight=0.,
-    n_steps_param=0.,
-    contact_points_weight=0.,
-    contact_points_param=0.,
-    differential=True,
+    goal_size_ratio=.25,
+    reward_scale=1.,
+    reward_params=None,
     flat_action=True,
     dtype='float32',
     seed=None,
@@ -82,10 +76,7 @@ class StackEnv(gym.Env):
       max_z: See Observer.
       rewarder: constructor for the environment's reward calculator. If None,
         Rewarder class is used.
-      goal_size_ratio, occupation_ratio_weight, occupation_ratio_param,
-        positions_weight, positions_param, n_steps_weight, n_steps_param,
-        contact_points_weight, contact_points_param, differential: see 
-        Rewarder.
+      goal_size_ratio, reward_scale, reward_params: see Rewarder.
       flat_action: whether to receive action as a flat index or a pair of
         indexes [h, w].
       dtype: data type of the returned observation. Must be one of 
@@ -150,21 +141,23 @@ class StackEnv(gym.Env):
     )
 
     # Set the rewarder.
-    rewarder = rewarder or Rewarder
+    if rewarder is None:
+      rewarder = PoseRewarder
+    elif isinstance(rewarder, str):
+      if rewarder in self.metadata['rewarders']:
+        rewarder = self.metadata['rewarders'][rewarder]
+      else:
+        raise ValueError("Invalid value {} for argument rewarder".format(rewarder))
+    elif not issubclass(rewarder, Rewarder):
+      raise TypeError("Invalid type {} for argument rewarder".format(type(rewarder)))
+    reward_params = reward_params or {}
     self._rew = rewarder(
-      self._sim, 
-      self._obs,
+      simulator=self._sim, 
+      observer=self._obs,
       goal_size_ratio=goal_size_ratio,
-      occupation_ratio_weight=occupation_ratio_weight,
-      occupation_ratio_param=occupation_ratio_param,
-      positions_weight=positions_weight,
-      positions_param=positions_param,
-      n_steps_weight=n_steps_weight,
-      n_steps_param=n_steps_param,
-      contact_points_weight=contact_points_weight,
-      contact_points_param=contact_points_param,
-      differential=differential,
-      seed=self._random.randint(2**32)
+      scale=reward_scale,
+      seed=self._random.randint(2**32),
+      **reward_params,
     )
 
     # Set the return wrapper for the observations.
@@ -291,7 +284,7 @@ class StackEnv(gym.Env):
     r = m/_max if _max!=0 else m
     b = 1 - r
     g = np.ones(r.shape)*0.5
-    g[self._rew.boolean_goal] += 0.1
+    g[self._rew.goal_bin] += 0.1
     rgb0 = np.stack([r,g,b], axis=-1)
 
     _max = np.max(n)

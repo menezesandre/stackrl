@@ -202,6 +202,9 @@ class Simulator(object):
 
     self._place(position, orientation)
 
+    # Store the pose where the object was originally placed
+    self._place_poses.append(self.getBasePositionAndOrientation(self._objects[-1]))
+
     self._steps_counter[0] = 1
     if smooth_placing:
       while not self._drop():
@@ -213,8 +216,6 @@ class Simulator(object):
         self.stepSimulation()
         self._steps_counter[0] +=1
 
-    # Store the pose where the object was originally placed
-    self._place_poses.append(self.getBasePositionAndOrientation(self._objects[-1]))
     # Get poses of all objects at the beggining of the simulator step.
     self._initial_poses = [
       self.getBasePositionAndOrientation(i)
