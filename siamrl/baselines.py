@@ -37,11 +37,12 @@ def lowest(observation, *args, **kwargs):
   w = observation[1][:,:,0]
   shape = np.subtract(x.shape, w.shape) + 1
   h = np.zeros(shape)
+  wbin = w > 0.
   for i in range(shape[0]):
     for j in range(shape[1]):
       h[i,j] = np.max(np.where(
-        w > 0.,
-        x[i:i+w.shape[0], j:j+w.shape[0]] + w,
+        wbin,
+        x[i:i+w.shape[0], j:j+w.shape[1]] + w,
         0.,
       ))
   return -h
@@ -51,19 +52,23 @@ def closest(observation, *args, **kwargs):
   w = observation[1][:,:,0]
   shape = np.subtract(x.shape, w.shape) + 1
   d = np.zeros(shape)
+
+  wbin = w > 0.
+  wnz = np.count_nonzero(w)
+
   for i in range(shape[0]):
     for j in range(shape[1]):
       h = np.where(
-        w > 0.,
-        x[i:i+w.shape[0], j:j+w.shape[0]] + w,
+        wbin,
+        x[i:i+w.shape[0], j:j+w.shape[1]] + w,
         0.,
       )
       h -= np.where(
-        h != 0.,
-        np.max(h),
+        wbin,
+        h.max(),
         0.,
       )
-      d[i,j] = np.sum(h)/np.count_nonzero(h)
+      d[i,j] = h.sum()/wnz
   return d
 
 try:

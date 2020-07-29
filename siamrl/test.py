@@ -15,7 +15,7 @@ from siamrl import load_policy
 from siamrl import heatmap
 
 
-MAX_N_VISUALIZE = 5
+MAX_LINE_VISUALIZE = 3
 
 def write_raw(fname, **kwargs):
   """Store a set of named arrays in fname.
@@ -27,12 +27,18 @@ def write_raw(fname, **kwargs):
     for name,value in kwargs.items():
       if not isinstance(value, np.ndarray):
         value = np.array(value)
-      f.write('{}\t{}\t{}\t{}\n'.format(
+      f.write('{}\t{}\t{}\t'.format(
         name,
         value.dtype,
         ','.join([str(i) for i in value.shape]),
-        ','.join(value.ravel().astype(str)),
       ))
+      value = value.ravel()
+      # Write elements of value one by one, as the array may be to 
+      # large to use astype(str)
+      f.write('{}'.format(value[0]))
+      for v in value[1:]:
+        f.write(',{}'.format(v))
+      f.write('\n')
 
 def read_raw(fname):
   """Parse named arrays writen by write_raw in fname."""
@@ -47,8 +53,10 @@ def read_raw(fname):
 
 def write_results(fname, force=False, **kwargs):
   """Write the data in kwargs to fname.
-  If a file with matching header already exists, the data is appended.
-  If one of the columns is 'names', lines with matching names are replaced.
+  If a file with matching header already exists, the data is appended. if
+    one of the columns is 'keys', lines with matching keys are replaced.
+    In that case, if one of the columns is 'priority', a line with higher
+    priority is not replaced.
 
   Args:
     fname: name of the file.
@@ -58,35 +66,51 @@ def write_results(fname, force=False, **kwargs):
       to fill the columns.
 
   """
-  # Unify header stiles (e.g. returns_mean is turned to ReturnsMean)
+  # Unify header stiles (e.g. 'action_value' is turned to 'ActionValue')
   # str[:1].upper()+str[1:] is used instead of str.capitalize() to avoid lowering
   # all remaining characters. 
   kwargs = {
-    ''.join([i[:1].upper()+i[1:] for i in k.split('_')]):v for k,v in kwargs.items()
+    ''.join([i[:1].upper()+i[1:] for i in k.split('_')]):np.array(v) for k,v in kwargs.items()
   }
-
   if os.path.isfile(fname):
     try:
       with open(fname) as f:
         # Check if kwargs match header of existing file
         header_line = f.readline()
-        header = header_line.split(',')
+        header = header_line[:-1].split(',') # don't include last char (\n)
         if set(header) != set(kwargs):
           raise ValueError("kwargs don't match the existing file's header.")
 
-        if 'Names' in header:
-          # Check for repeated names to discard old lines.
-          i = header.index('Names')
+        # Only rewrite if there is at least one line to replace
+        rewrite = False
+        # New data lines to discard (in case old ones have higher priority)
+        new_lines_to_discard = []
+
+        if 'Keys' in header:
+          # Check for repeated keys to discard old lines.
+          ik = header.index('Keys')
+          if 'Priority' in header:
+            ip = header.index('Priority')
+          else:
+            ip = None
+
           lines_to_keep = [header_line]
-          rewrite = False
           for line in f:
-            if line.split(',')[i] in kwargs['Names']:
-              # Only rewrite if there is at least one line to discard
-              rewrite = True
+            sline = line[:-1].split(',')
+            if sline[ik] in kwargs['Keys']:
+              if ip is not None:
+                # Line of the new data corresponding to this key
+                i = np.where(kwargs['Keys']==sline[ik])[0][0]
+                # Compare priorities
+                if float(sline[ip]) > kwargs['Priority'][i]:
+                  lines_to_keep.append(line)
+                  new_lines_to_discard.append(i)
+                else:
+                  rewrite = True
+              else:
+                rewrite = True
             else:
               lines_to_keep.append(line)
-        else:
-          rewrite = False
 
       if rewrite:
         # Rewrite the file without the repeated lines
@@ -98,9 +122,10 @@ def write_results(fname, force=False, **kwargs):
       kwargs = {k:kwargs[k] for k in header}
       # Append new data
       with open(fname, 'a') as f:
-        for values in zip(*tuple(kwargs.values())):
-          values = [str(v) for v in values]
-          f.write(','.join(values)+'\n')
+        for i, values in enumerate(zip(*tuple(kwargs.values()))):
+          if i not in new_lines_to_discard:
+            values = [str(v) for v in values]
+            f.write(','.join(values)+'\n')
 
       return
 
@@ -148,12 +173,12 @@ def run(
   
   Returns:
     dictionary of arrays, with keys:
-      names: names of the policies;
+      keys: names of the policies;
       actions: best actions, with shape (num_policies, total_num_steps,2);
       values: predicted values, with shape 
         (num_policies, total_num_steps, num_actions);
       rewards: step rewards, with shape (num_policies, num_steps);
-      episode_starts: indexes of the steps corresponding to an episode 
+      episode_bounds: indexes of the steps corresponding to an episode 
         boundary, with shape (num_episodes+1,).
   """
   # Set policies dictionary
@@ -170,13 +195,6 @@ def run(
   if sleep is None or sleep < 0:
     sleep = 0.5 if visualize else 0.
 
-  if visualize:
-    # Visualize at most the values from MAX_N_VISUALIZE policies simultaneously
-    n_visualize = min(len(policies), MAX_N_VISUALIZE)
-    _, axs = plt.subplots(
-      2,1+n_visualize, 
-      gridspec_kw={'height_ratios':[4, 1]}
-    )
   # Shape of the value maps
   vshape = (
     env.observation_space[0].shape[0]-env.observation_space[1].shape[0]+1,
@@ -185,27 +203,52 @@ def run(
   # Auxiliary variables
   num_policies = len(policies)
   total_num_steps = num_policies*num_steps
-  names = np.array(list(policies.keys()))
-  episode_starts = []
+  keys = np.array(list(policies.keys()))
+  episode_bounds = []
   # Initialize variables to store results
-  rewards = np.zeros((num_policies,num_steps))
-  values = np.zeros((num_policies, total_num_steps, np.prod(vshape)))
-  actions = np.zeros((num_policies, total_num_steps, 2))
+  rewards = np.zeros((num_policies,num_steps), dtype='float32')
+  values = np.zeros(
+    (num_policies, total_num_steps, np.prod(vshape)), 
+    dtype='float32'
+  )
+  actions = np.zeros(
+    (num_policies, total_num_steps, 2), 
+    dtype='uint8' if max(vshape) < 2**8 else 'uint16',
+  )
 
-  # RUN TESTS
+  if visualize:
+    # Visualize at most two lines of MAX_LINE_VISUALIZE value maps simultaneously
+    n_visualize = min(num_policies, 2*MAX_LINE_VISUALIZE)
+    if n_visualize > MAX_LINE_VISUALIZE:
+      _, axs = plt.subplots(
+        2,1+MAX_LINE_VISUALIZE, 
+      )
+    else:
+      _, axs = plt.subplots(
+        2,1+MAX_LINE_VISUALIZE, 
+        gridspec_kw={'height_ratios':[4, 1]},
+      )
+    for i in range(n_visualize, 2*MAX_LINE_VISUALIZE):
+      ax = axs[i//MAX_LINE_VISUALIZE][i%MAX_LINE_VISUALIZE + 1]
+      ax.set_xticks([])
+      ax.set_yticks([])
+      for spine in ax.spines.values():
+        spine.set_visible(False)
+
+  # Run tests
   itime = time.time()
   for i in range(total_num_steps):
     if i % num_steps == 0:
       index = i//num_steps
       if verbose:
-        print(names[index].capitalize())
+        print(keys[index].capitalize())
       # Reseed and reset environment
       env.seed(seed)
       o=env.reset()
-      episode_starts.append(i)
+      episode_bounds.append(i)
       num_done = 0
 
-    for j,k in enumerate(names):
+    for j,k in enumerate(keys):
       a,v = policies[k](o)
       if j == index:
         # Action from current policy, to be performed on environment
@@ -216,34 +259,32 @@ def run(
     if visualize:
       rgb = env.render(mode='rgb_array')
       # Show observation
-      for j in range(2):
-        axs[j][0].cla()
-        axs[j][0].imshow(rgb[j])
+      for axl, img, title in zip(axs, rgb, ('Overhead view', 'Object view')):
+        axl[0].cla()
+        axl[0].imshow(img)
+        axl[0].set_title(title)
+        # Remove ticks
+        axl[0].set_xticks([])
+        axl[0].set_yticks([])
 
       min_j = np.clip(index - n_visualize//2, 0, num_policies - n_visualize)
       max_j = min_j + n_visualize
       # Show value maps
       for k,j in enumerate(range(min_j, max_j)):
-        axs[0][k+1].cla()
-        axs[0][k+1].imshow(values[j,i].reshape(vshape))
-        # Show values one standard deviation above mean
-        threshold = values[j,i].mean() + values[j,i].std()
-        axs[1][k+1].cla()
-        axs[1][k+1].imshow(np.where(
-          values[j,i]>threshold, 
-          values[j,i], 
-          threshold,
-        ).reshape(vshape))
-        # Label the policies
-        axs[1][k+1].set_xlabel(names[j])
+        ax = axs[k//MAX_LINE_VISUALIZE][1 + k%MAX_LINE_VISUALIZE]
+        ax.cla()
+        ax.imshow(values[j,i].reshape(vshape))
+        ax.set_title(keys[j])
+        # Remove ticks
+        ax.set_xticks([])
+        ax.set_yticks([])
+        # Mark current policy
+        if j == index:
+          for spine in ax.spines.values():
+            # spine.set_color((0.762373, 0.876424, 0.137064, 1.))
+            spine.set_color((0.993248,0.906157,0.143936, 1.))
+            spine.set_linewidth(3)
 
-      # Label current policy
-      axs[0][index+1].set_title('current policy')
-        
-      # Remove all axis ticks
-      plt.xticks([])
-      plt.yticks([])
-      # Show figure and pause for the time left in the sleep period.
       plt.pause(max(1e-12, sleep-(time.time()-itime)))
     elif sleep:
       time.sleep(max(0, sleep-(time.time()-itime)))
@@ -257,66 +298,63 @@ def run(
       if verbose:
         print('  Episode #{}: Return {}'.format(
           num_done,
-          rewards[index, episode_starts[-1]%num_steps:i%num_steps+1].sum(),
+          rewards[index, episode_bounds[-1]%num_steps:i%num_steps+1].sum(),
         ))
-      episode_starts.append(i+1)
+      episode_bounds.append(i+1)
       o=env.reset()
   
-  episode_starts.append(total_num_steps)
+  episode_bounds.append(total_num_steps)
+  episode_bounds = np.array(
+    episode_bounds, 
+    dtype='uint16' if total_num_steps < 2**16 else 'uint32'
+  )
   # Remove repeated episode starts 
   # (happens when an episode end coincides with the end of a policy's num_steps)
-  episode_starts = np.unique(episode_starts)
+  episode_bounds = np.unique(episode_bounds)
 
   if visualize:
     plt.close()
 
   return {
-    'names': names,
+    'keys': keys,
     'actions': actions, 
     'values': values, 
     'rewards': rewards, 
-    'episode_starts': episode_starts,
+    'episode_bounds': episode_bounds,
   }
 
 def analyse(
-  names, 
+  keys, 
   actions, 
   values, 
   rewards, 
-  episode_starts, 
-  verbose=True, 
+  episode_bounds, 
   show=False, 
-  save_results=None, 
-  save_plots=None, 
+  save=None, 
   dirname='.'
 ):
   # Set save status
-  if save_results is None:
-    save_results = not verbose
-  if save_plots is None:
-    save_plots = not show
-  # # Time stamped folder
-  # tdirname = os.path.join(dirname, datetime.now().strftime("%y%m%d-%H%M%S"))
-  # os.makedirs(tdirname)
+  if save is None:
+    save = not show
 
-  num_policies = names.size
+  num_policies = keys.size
   num_steps = rewards.shape[-1]
   total_num_steps = values.shape[1]
 
   # Check if episode length is constant
   if np.all(
-    episode_starts == 
-    np.arange(0, total_num_steps+1, total_num_steps/(episode_starts.size - 1))
+    episode_bounds == 
+    np.arange(0, total_num_steps+1, total_num_steps/(episode_bounds.size - 1))
   ):
-    episode_length = int(total_num_steps/(episode_starts.size - 1))
+    episode_length = int(total_num_steps/(episode_bounds.size - 1))
     # Episode returns
     returns = rewards.reshape((num_policies, -1, episode_length)).sum(axis=-1)
   else:
     episode_length = None
     # Compute episode returns with known rewards and episode boundaries
-    returns = [list() for _ in range(names.size)]
-    for i in range(len(episode_starts)-1):
-      start,end = episode_starts[i:i+2]
+    returns = [list() for _ in range(keys.size)]
+    for i in range(len(episode_bounds)-1):
+      start,end = episode_bounds[i:i+2]
       delta = end-start
       j = start//num_steps
       start = start%num_steps
@@ -327,258 +365,245 @@ def analyse(
   returns_mean = returns.mean(axis=-1)
   returns_std = returns.std(axis=-1)
 
-  if verbose:
-    print('Average returns (+/- std dev):')
-    for n,r,rd in zip(names,returns_mean,returns_std):
-      print('  {}: {} (+/-{})'.format(n,r,rd))
-
-  # Plot returns distribution
-  plt.errorbar(names, returns_mean, yerr=(returns_mean-returns.min(axis=-1), returns.max(axis=-1)-returns_mean), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
-  plt.errorbar(names, returns_mean, yerr=returns_std, fmt='bo', capsize=4, label='Mean +/- std dev')
-  plt.xlabel('Policy')
-  plt.ylabel('Return')
-  plt.legend()
-  if save_plots:
-    plt.savefig(os.path.join(dirname, 'returns.pdf'))
-    plt.savefig(os.path.join(dirname, 'returns.png'))
-  if show:
-    plt.show()
-  else:
-    plt.close()
-
-  # Histogram of best policy by episode
-  plt.hist(names[returns.argmax(axis=0)], bins='auto')
-  plt.xlabel('Policy')
-  plt.ylabel('# episodes with best return')
-  if save_plots:
-    plt.savefig(os.path.join(dirname, 'best_hist.pdf'))
-    plt.savefig(os.path.join(dirname, 'best_hist.png'))
-  if show:
-    plt.show()
-  else:
-    plt.close()
-
-  # Rewards distribution
-  rewards_mean = rewards.mean(axis=-1)
-  plt.errorbar(names, rewards_mean, yerr=(rewards_mean-rewards.min(axis=-1), rewards.max(axis=-1)-rewards_mean), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
-  plt.errorbar(names, rewards_mean, yerr=rewards.std(axis=-1), fmt='bo', capsize=4, label='Mean +/- std dev')
-  plt.xlabel('Policy')
-  plt.ylabel('Reward')
-  plt.legend()
-  if save_plots:
-    plt.savefig(os.path.join(dirname, 'rewards.pdf'))
-    plt.savefig(os.path.join(dirname, 'rewards.png'))
-  if show:
-    plt.show()
-  else:
-    plt.close()
-
-  # Reward distribution allong episode
-  if episode_length:
-    rewards = rewards.reshape((num_policies, -1, episode_length))
-    rewards_mean = rewards.mean(axis=1)
-    rewards_std = rewards.std(axis=1)
-    rewards_min = rewards.min(axis=1)
-    rewards_max = rewards.max(axis=1)
-
-    # Plot distribution for each policy
-    for i in range(num_policies):
-      plt.errorbar(range(1,episode_length+1), rewards_mean[i], yerr=(rewards_mean[i]-rewards_min[i], rewards_max[i]-rewards_mean[i]), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
-      plt.errorbar(range(1,episode_length+1), rewards_mean[i], yerr=rewards_std[i], fmt='bo', capsize=4, label='Mean +/- std dev')
-      plt.xlabel('Step')
-      plt.ylabel('Reward')
-      plt.legend()
-      plt.title(names[i])
-      if save_plots:
-        plt.savefig(os.path.join(dirname, 'rewards_{}.pdf'.format(names[i])))
-        plt.savefig(os.path.join(dirname, 'rewards_{}.png'.format(names[i])))
-      if show:
-        plt.show()
-      else:
-        plt.close()
-
-    # Plot means of all policies
-    for i in range(num_policies):
-      plt.plot(range(1,episode_length+1), rewards_mean[i], label=names[i])
-
-    plt.legend()
-    plt.xlabel('Step')
-    plt.ylabel('Reward')
-    if save_plots:
-      plt.savefig(os.path.join(dirname, 'rewards_all.pdf'))
-      plt.savefig(os.path.join(dirname, 'rewards_all.png'))
-    if show:
-      plt.show()
-    else:
-      plt.close()
-
-  # Distance between actions
-  actions_distance = np.linalg.norm(
-    np.expand_dims(actions, axis=0) - np.expand_dims(actions, axis=1),
-    axis=-1,
-  )
-  im,_ = heatmap.heatmap(actions_distance.mean(axis=-1), names, names, cbarlabel='Mean distance (pixels)')
-  heatmap.annotate_heatmap(im)
-  if save_plots:
-    plt.savefig(os.path.join(dirname, 'distance_heatmap.pdf'))
-    plt.savefig(os.path.join(dirname, 'distance_heatmap.png'))
-  if show:
-    plt.show()
-  else:
-    plt.close()
-
-  # Histogram of distances for each pair of policies
-  for i in range(num_policies-1):
-    for j in range(i+1, num_policies):
-      n = np.sort((names[i], names[j]))
-      plt.hist(actions_distance[i,j], bins='auto')
-      plt.xlabel('Distance between {} and {}'.format(*n))
-      plt.ylabel('Frequency')
-      
-      if save_plots:
-        plt.savefig(os.path.join(dirname, 'distance_hist_{}_{}.pdf'.format(*n)))
-        plt.savefig(os.path.join(dirname, 'distance_hist_{}_{}.png'.format(*n)))
-      if show:
-        plt.show()
-      else:
-        plt.close()
-
-  # Correlation between value functions
-  corrcoefs = np.corrcoef(values.reshape((num_policies, -1)))
-  im,_ = heatmap.heatmap(corrcoefs, names, names, cbarlabel='Correlation coefficients')
-  heatmap.annotate_heatmap(im)
-  if save_plots:
-    plt.savefig(os.path.join(dirname, 'correlation_heatmap.pdf'))
-    plt.savefig(os.path.join(dirname, 'correlation_heatmap.png'))
-  if show:
-    plt.show()
-  else:
-    plt.close()
-
-  # Stepwise values distribution
-  values_mean = values.mean(axis=-1)
-  values_std = values.std(axis=-1)
-  # Overlap between values above mean for different functions
-  values_above_mean = values > np.expand_dims(values_mean, axis=-1)
-  overlap_above_mean = (
-    # Intersection
-    np.count_nonzero(np.logical_and(
-      values_above_mean.reshape((1,num_policies,-1)),
-      values_above_mean.reshape((num_policies,1,-1)),
-    ), axis=-1) /
-    # Union
-    np.count_nonzero(np.logical_or(
-      values_above_mean.reshape((1,num_policies,-1)),
-      values_above_mean.reshape((num_policies,1,-1)),
-    ), axis=-1)    
-  )
-
-  im,_ = heatmap.heatmap(overlap_above_mean, names, names, cbarlabel='Overlap of values above mean')
-  heatmap.annotate_heatmap(im)
-  if save_plots:
-    plt.savefig(os.path.join(dirname, 'overlap_mean_heatmap.pdf'))
-    plt.savefig(os.path.join(dirname, 'overlap_mean_heatmap.png'))
-  if show:
-    plt.show()
-  else:
-    plt.close()
-
-  # Overlap between values one std deviation above mean for different functions  
-  values_above_std = values > np.expand_dims(values_mean+values_std, axis=-1)
-  overlap_above_std = (
-    # Intersection
-    np.count_nonzero(np.logical_and(
-      values_above_std.reshape((1,num_policies,-1)),
-      values_above_std.reshape((num_policies,1,-1)),
-    ), axis=-1) /
-    # Union
-    np.count_nonzero(np.logical_or(
-      values_above_std.reshape((1,num_policies,-1)),
-      values_above_std.reshape((num_policies,1,-1)),
-    ), axis=-1)    
-  )
-
-  im,_ = heatmap.heatmap(overlap_above_std, names, names, cbarlabel='Overlap of values one std dev above mean')
-  heatmap.annotate_heatmap(im)
-  if save_plots:
-    plt.savefig(os.path.join(dirname, 'overlap_std_heatmap.pdf'))
-    plt.savefig(os.path.join(dirname, 'overlap_std_heatmap.png'))
-  if show:
-    plt.show()
-  else:
-    plt.close()
-
   # Action values (max value for each step)
   action_values = values.max(axis=-1)
 
   action_value = action_values.mean(axis=-1)
   action_value_std = action_values.std(axis=-1)
 
-  for i in range(num_policies):
-    plt.hist(values[i].ravel(), bins='auto', density=True, label='All values')
-    plt.xlabel('Values (estimated by {})'.format(names[i]))
-    plt.ylabel('Frequency')
+  #Plots
+  if save or show:
+    # Plot returns distribution
+    plt.errorbar(keys, returns_mean, yerr=(returns_mean-returns.min(axis=-1), returns.max(axis=-1)-returns_mean), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
+    plt.errorbar(keys, returns_mean, yerr=returns_std, fmt='bo', capsize=4, label='Mean +/- std dev')
+    plt.xlabel('Policy')
+    plt.ylabel('Return')
     plt.legend()
-    if save_plots:
-      plt.savefig(os.path.join(dirname, 'value_hist_{}.pdf'.format(names[i])))
-      plt.savefig(os.path.join(dirname, 'value_hist_{}.png'.format(names[i])))
+    if save:
+      plt.savefig(os.path.join(dirname, 'returns.pdf'))
+      plt.savefig(os.path.join(dirname, 'returns.png'))
     if show:
       plt.show()
     else:
       plt.close()
 
-    plt.hist(action_values[i], bins='auto', density=True, label='Action values')
-    plt.xlabel('Action values (estimated by {})'.format(names[i]))
-    plt.ylabel('Frequency')
+    # Rewards distribution
+    rewards_mean = rewards.mean(axis=-1)
+    plt.errorbar(keys, rewards_mean, yerr=(rewards_mean-rewards.min(axis=-1), rewards.max(axis=-1)-rewards_mean), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
+    plt.errorbar(keys, rewards_mean, yerr=rewards.std(axis=-1), fmt='bo', capsize=4, label='Mean +/- std dev')
+    plt.xlabel('Policy')
+    plt.ylabel('Reward')
     plt.legend()
-    if save_plots:
-      plt.savefig(os.path.join(dirname, 'action_value_hist_{}.pdf'.format(names[i])))
-      plt.savefig(os.path.join(dirname, 'action_value_hist_{}.png'.format(names[i])))
+    if save:
+      plt.savefig(os.path.join(dirname, 'rewards.pdf'))
+      plt.savefig(os.path.join(dirname, 'rewards.png'))
     if show:
       plt.show()
     else:
       plt.close()
 
-  # Action values distribution along episode
-  if episode_length:
-    action_values = action_values.reshape((num_policies, -1, episode_length))
-    action_values_mean = action_values.mean(axis=1)
-    action_values_std = action_values.std(axis=1)
-    action_values_min = action_values.min(axis=1)
-    action_values_max = action_values.max(axis=1)
-  
-    for i in range(num_policies):
-      plt.errorbar(range(1,episode_length+1), action_values_mean[i], yerr=(action_values_mean[i]-action_values_min[i], action_values_max[i]-action_values_mean[i]), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
-      plt.errorbar(range(1,episode_length+1), action_values_mean[i], yerr=action_values_std[i], fmt='bo', capsize=4, label='Mean +/- std dev')
-      plt.xlabel('Step')
-      plt.ylabel('Value (estimated by {})'.format(names[i]))
-      plt.legend()
-      if save_plots:
-        plt.savefig(os.path.join(dirname, 'action_values_{}.pdf'.format(names[i])))
-        plt.savefig(os.path.join(dirname, 'action_values_{}.png'.format(names[i])))
+    # Reward distribution allong episode
+    if episode_length:
+      rewards = rewards.reshape((num_policies, -1, episode_length))
+      rewards_mean = rewards.mean(axis=1)
+      rewards_std = rewards.std(axis=1)
+      rewards_min = rewards.min(axis=1)
+      rewards_max = rewards.max(axis=1)
+
+      # Plot distribution for each policy
+      for i in range(num_policies):
+        plt.errorbar(range(1,episode_length+1), rewards_mean[i], yerr=(rewards_mean[i]-rewards_min[i], rewards_max[i]-rewards_mean[i]), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
+        plt.errorbar(range(1,episode_length+1), rewards_mean[i], yerr=rewards_std[i], fmt='bo', capsize=4, label='Mean +/- std dev')
+        plt.xlabel('Step')
+        plt.ylabel('Reward')
+        plt.legend()
+        plt.title(keys[i])
+        if save:
+          plt.savefig(os.path.join(dirname, 'rewards_{}.pdf'.format(keys[i])))
+          plt.savefig(os.path.join(dirname, 'rewards_{}.png'.format(keys[i])))
+        if show:
+          plt.show()
+        else:
+          plt.close()
+
+      # Plot means of all policies
+      if num_policies > 1:
+        for i in range(num_policies):
+          plt.plot(range(1,episode_length+1), rewards_mean[i], label=keys[i])
+
+        plt.legend()
+        plt.xlabel('Step')
+        plt.ylabel('Reward')
+        if save:
+          plt.savefig(os.path.join(dirname, 'rewards_all.pdf'))
+          plt.savefig(os.path.join(dirname, 'rewards_all.png'))
+        if show:
+          plt.show()
+        else:
+          plt.close()
+
+    if num_policies > 1:
+      # Histogram of best policy by episode
+      plt.hist(keys[returns.argmax(axis=0)], bins='auto')
+      plt.xlabel('Policy')
+      plt.ylabel('# episodes with best return')
+      if save:
+        plt.savefig(os.path.join(dirname, 'best_hist.pdf'))
+        plt.savefig(os.path.join(dirname, 'best_hist.png'))
+      if show:
+        plt.show()
+      else:
+        plt.close()
+      # Distance between actions
+      actions_distance = np.linalg.norm(
+        np.expand_dims(actions, axis=0) - np.expand_dims(actions, axis=1),
+        axis=-1,
+      )
+      im,_ = heatmap.heatmap(actions_distance.mean(axis=-1), keys, keys, cbarlabel='Mean distance (pixels)')
+      heatmap.annotate_heatmap(im)
+      if save:
+        plt.savefig(os.path.join(dirname, 'distance_heatmap.pdf'))
+        plt.savefig(os.path.join(dirname, 'distance_heatmap.png'))
       if show:
         plt.show()
       else:
         plt.close()
 
-  # Save results
-  if save_results:
-    write_results(
-      fname=os.path.join(dirname, 'results.csv'),
-      names=names,
-      return_=returns_mean,
-      return_std=returns_std,
-      action_value=action_value,
-      action_value_std=action_value_std,
-    )
-    write_raw(
-      fname=os.path.join(dirname, 'data'),
-      actions_distance=actions_distance,
-      corrcoefs=corrcoefs,
-      overlap_above_mean=overlap_above_mean,
-      overlap_above_std=overlap_above_std,
-    )
+      # Histogram of distances for each pair of policies
+      for i in range(num_policies-1):
+        for j in range(i+1, num_policies):
+          n = np.sort((keys[i], keys[j]))
+          plt.hist(actions_distance[i,j], bins='auto')
+          plt.xlabel('Distance between {} and {}'.format(*n))
+          plt.ylabel('Frequency')
+          
+          if save:
+            plt.savefig(os.path.join(dirname, 'distance_hist_{}_{}.pdf'.format(*n)))
+            plt.savefig(os.path.join(dirname, 'distance_hist_{}_{}.png'.format(*n)))
+          if show:
+            plt.show()
+          else:
+            plt.close()
 
+      # Correlation between value functions
+      corrcoefs = np.corrcoef(values.reshape((num_policies, -1)))
+      im,_ = heatmap.heatmap(corrcoefs, keys, keys, cbarlabel='Correlation coefficients')
+      heatmap.annotate_heatmap(im)
+      if save:
+        plt.savefig(os.path.join(dirname, 'correlation_heatmap.pdf'))
+        plt.savefig(os.path.join(dirname, 'correlation_heatmap.png'))
+      if show:
+        plt.show()
+      else:
+        plt.close()
+
+      # Stepwise values distribution
+      values_mean = values.mean(axis=-1)
+      values_std = values.std(axis=-1)
+      # Overlap between values above mean for different functions
+      values_above_mean = values > np.expand_dims(values_mean, axis=-1)
+      overlap_above_mean = (
+        # Intersection
+        np.count_nonzero(np.logical_and(
+          values_above_mean.reshape((1,num_policies,-1)),
+          values_above_mean.reshape((num_policies,1,-1)),
+        ), axis=-1) /
+        # Union
+        np.count_nonzero(np.logical_or(
+          values_above_mean.reshape((1,num_policies,-1)),
+          values_above_mean.reshape((num_policies,1,-1)),
+        ), axis=-1)    
+      )
+
+      im,_ = heatmap.heatmap(overlap_above_mean, keys, keys, cbarlabel='Overlap of values above mean')
+      heatmap.annotate_heatmap(im)
+      if save:
+        plt.savefig(os.path.join(dirname, 'overlap_mean_heatmap.pdf'))
+        plt.savefig(os.path.join(dirname, 'overlap_mean_heatmap.png'))
+      if show:
+        plt.show()
+      else:
+        plt.close()
+
+      # Overlap between values one std deviation above mean for different functions  
+      values_above_std = values > np.expand_dims(values_mean+values_std, axis=-1)
+      overlap_above_std = (
+        # Intersection
+        np.count_nonzero(np.logical_and(
+          values_above_std.reshape((1,num_policies,-1)),
+          values_above_std.reshape((num_policies,1,-1)),
+        ), axis=-1) /
+        # Union
+        np.count_nonzero(np.logical_or(
+          values_above_std.reshape((1,num_policies,-1)),
+          values_above_std.reshape((num_policies,1,-1)),
+        ), axis=-1)    
+      )
+
+      im,_ = heatmap.heatmap(overlap_above_std, keys, keys, cbarlabel='Overlap of values one std dev above mean')
+      heatmap.annotate_heatmap(im)
+      if save:
+        plt.savefig(os.path.join(dirname, 'overlap_std_heatmap.pdf'))
+        plt.savefig(os.path.join(dirname, 'overlap_std_heatmap.png'))
+      if show:
+        plt.show()
+      else:
+        plt.close()
+
+    for i in range(num_policies):
+      plt.hist(values[i].ravel(), bins='auto', density=True, label='All values')
+      plt.xlabel('Values (estimated by {})'.format(keys[i]))
+      plt.ylabel('Frequency')
+      plt.legend()
+      if save:
+        plt.savefig(os.path.join(dirname, 'value_hist_{}.pdf'.format(keys[i])))
+        plt.savefig(os.path.join(dirname, 'value_hist_{}.png'.format(keys[i])))
+      if show:
+        plt.show()
+      else:
+        plt.close()
+
+      plt.hist(action_values[i], bins='auto', density=True, label='Action values')
+      plt.xlabel('Action values (estimated by {})'.format(keys[i]))
+      plt.ylabel('Frequency')
+      plt.legend()
+      if save:
+        plt.savefig(os.path.join(dirname, 'action_value_hist_{}.pdf'.format(keys[i])))
+        plt.savefig(os.path.join(dirname, 'action_value_hist_{}.png'.format(keys[i])))
+      if show:
+        plt.show()
+      else:
+        plt.close()
+
+    # Action values distribution along episode
+    if episode_length:
+      action_values = action_values.reshape((num_policies, -1, episode_length))
+      action_values_mean = action_values.mean(axis=1)
+      action_values_std = action_values.std(axis=1)
+      action_values_min = action_values.min(axis=1)
+      action_values_max = action_values.max(axis=1)
+    
+      for i in range(num_policies):
+        plt.errorbar(range(1,episode_length+1), action_values_mean[i], yerr=(action_values_mean[i]-action_values_min[i], action_values_max[i]-action_values_mean[i]), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
+        plt.errorbar(range(1,episode_length+1), action_values_mean[i], yerr=action_values_std[i], fmt='bo', capsize=4, label='Mean +/- std dev')
+        plt.xlabel('Step')
+        plt.ylabel('Value (estimated by {})'.format(keys[i]))
+        plt.legend()
+        if save:
+          plt.savefig(os.path.join(dirname, 'action_values_{}.pdf'.format(keys[i])))
+          plt.savefig(os.path.join(dirname, 'action_values_{}.png'.format(keys[i])))
+        if show:
+          plt.show()
+        else:
+          plt.close()
+
+  return {
+    'keys':keys,
+    'return':returns_mean,
+    'return_std':returns_std,
+    'action_value':action_value,
+    'action_value_std':action_value_std,
+  }
 
 def test(
   env,
@@ -620,45 +645,23 @@ def test(
   # Only save results if policies are named  
   save_results = save_results and isinstance(policies, dict)
 
-  # Results directory
-  dirname = os.path.join(
+  # Environment directory
+  envdirname = os.path.join(
     # Package root folder (Siam-RL/)
     os.path.dirname(os.path.dirname(__file__)),
     'data',
     'test',
-    # Path from env id
+    # Folder from env id
     envs.utils.as_path(env.unwrapped.spec.id),
-    # Path from seed and num_steps
+  )
+  # Directory for this experiment
+  dirname = os.path.join(
+    envdirname,
+    # Folder from seed and num_steps
     '{}-{}'.format(seed, num_steps),
-    # Path from time stamp
+    # Folder from time stamp
     datetime.now().strftime("%y%m%d-%H%M%S"),
   )
-  # Create directory if necessary
-  if (save_results or save_plots) and not os.path.isdir(dirname):
-    os.makedirs(dirname)
-  # Raw data file
-  data_fname = os.path.join(dirname, 'raw_data')
-
-  # Check if results are already present. Tests are only run for 
-  # policies that weren't tested on this setting before.
-  # if (
-  #   isinstance(policies, dict) and 
-  #   os.path.isfile(data_fname)
-  # ):
-  #   previous_data = read_raw(data_fname)
-
-  #   previous_indexes = []
-  #   for i,k in enumerate(previous_data.get('names', [])):
-  #     print(k, policies.keys())
-  #     if k in policies:
-  #       previous_indexes.append(i)
-  #       policies.pop(k)
-  #       if verbose:
-  #         print('Reusing previous test data for {}.'.format(k))
-    
-  #   previous_indexes = np.array(previous_indexes)
-  # else:
-  #   previous_data, previous_indexes = None, None
 
   data = run(
     env=env,
@@ -669,34 +672,32 @@ def test(
     sleep=sleep,
     seed=seed,
   )
-  if save_results:
-    # Write raw results
-    # new_data = {}
-    # if previous_data:
-    #   # Append results to previous data to rewrite the file
-    #   for key in data:
-    #     if data[key]:
-    #       new_data[key] = np.concatenate((data[key], previous_data[key]))
-    #     else:
-    #       new_data
-    # else:
-    #   new_data = data
-    write_raw(data_fname, **data)
 
-  # if previous_indexes:
-  #   # Join data from previous tests
-  #   for key in data:
-  #     data[key] = np.concatenate((data[key], previous_data[key][previous_indexes])) 
-  
-  analyse(
+  if save_results:
+    if not os.path.isdir(dirname):
+      os.makedirs(dirname)
+    np.savez_compressed(os.path.join(dirname, 'data'), **data)
+
+  data = analyse(
     **data,
-    verbose=verbose, 
     show=show, 
-    save_plots=save_plots, 
-    save_results=save_results,
+    save=save_plots,
     dirname=dirname,
   )
+  if save_results:
+    # Update the results on the environment directory. Experiments with
+    # a larger number of steps are prioritized
+    data['priority'] = np.ones_like(data['keys'], dtype=int)*num_steps
+    write_results(os.path.join(envdirname,'results.csv'), **data)
+
+  if verbose:
+    print('Average returns (+/- std dev):')
+    for n,r,rd in zip(data['keys'],data['return'],data['return_std']):
+      print('  {}: {} (+/-{})'.format(n,r,rd))
   
+def analyse_npz(fname, show=False, save=None, dirname='.'):
+  """Run analyse with data from a previous experience."""
+  analyse(**np.load(fname), show=show, save=save, dirname=dirname)
 
 # -----------------------------------------------------------------------
 
