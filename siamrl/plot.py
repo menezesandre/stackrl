@@ -203,10 +203,17 @@ def plot(fname, x_key, y_keys, smooth=0, split=None, baselines=None, show=False,
   axs[-1].set_xlabel(x_key)
 
   if save_as:
+    dirname = os.path.dirname(save_as)
+    if dirname and not os.path.isdir(dirname):
+      os.makedirs(dirname)
     plt.savefig(save_as)
   elif not show:
     for ext in ['png', 'pdf']:
-      plt.savefig(get_save_name(fname,ext=ext))
+      save_as = get_save_name(fname,ext=ext)
+      dirname = os.path.dirname(save_as)
+      if dirname and not os.path.isdir(dirname):
+        os.makedirs(dirname)
+      plt.savefig(save_as)
 
   if show:
     plt.show()
