@@ -40,7 +40,7 @@ class StackEnv(gym.Env):
     observer=None,
     observable_size_ratio=4,
     resolution_factor=5,
-    max_z=1,
+    max_z=0.5,
     rewarder=None,
     goal_size_ratio=.25,
     reward_scale=1.,
@@ -77,6 +77,9 @@ class StackEnv(gym.Env):
       rewarder: constructor for the environment's reward calculator. If None,
         Rewarder class is used.
       goal_size_ratio, reward_scale, reward_params: see Rewarder.
+      reward_scale: factor to be multiplied by the computed reward before step
+        return.
+      reward_params: to be passed to rewarder.
       flat_action: whether to receive action as a flat index or a pair of
         indexes [h, w].
       dtype: data type of the returned observation. Must be one of 
@@ -157,7 +160,7 @@ class StackEnv(gym.Env):
       goal_size_ratio=goal_size_ratio,
       scale=reward_scale,
       seed=self._random.randint(2**32),
-      **reward_params,
+      params=reward_params,
     )
 
     # Set the return wrapper for the observations.
@@ -262,6 +265,13 @@ class StackEnv(gym.Env):
     ))
     # Reset simulator.
     self._sim.reset(self._episode_list.pop())
+    if self._gui:
+      self._sim.resetDebugVisualizerCamera(
+        self._obs.size[2], 
+        90, 
+        -75, 
+        (self._obs.size[0]/2,self._obs.size[1]/2,0),
+      )
     # Reset rewarder.
     self._rew.reset()
     # Get first observation.

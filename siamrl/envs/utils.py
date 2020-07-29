@@ -79,12 +79,18 @@ def as_path(env_id):
   }
   args.update(env_spec._kwargs)
 
-  path = [entry_point.__name__]
+  path1 = entry_point.__name__
+  path2 = []
   for k,v in args.items():
     if k != 'seed':
-      path.append('{}-{}'.format(k,v).replace('.','_'))
-
-  return os.path.join(*path)
+      k = k.split('_')
+      if len(k) > 1:
+        k = k[0][:1] + k[-1][:3]
+      else:
+        k = k[0][:4]
+      path2.append(k + str(v))
+  path2 = ','.join(path2).replace(' ', '').replace("'", '').replace('"','')
+  return os.path.join(path1,path2)
 
 class Env(object):
   """Wraps a gym Env to receive and return tensors with batch dimension.

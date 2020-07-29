@@ -11,6 +11,7 @@ class Rewarder(object):
     observer,
     goal_size_ratio=0.5,
     scale=1.,
+    params=None,
     seed=None,
   ):
     """
@@ -25,6 +26,7 @@ class Rewarder(object):
         fraction) for fixed dimensions. In the later case, goal orientation 
         is randomly choosen to be horizontal or vertical.
       scale: scalar to be multiplied by the computed reward before return.
+      params: unused.
       seed: seed for the random number generator used to define the goal.
     """
     if isinstance(simulator, Simulator):
@@ -170,56 +172,67 @@ class PoseRewarder(Rewarder):
   def __init__(
     self,
     *args,
-    p=None,
-    o=None,
+    params=None,
     **kwargs,
   ):
     """
     Args:
-      p: tolerance parameter in the interval (0,1] for the translation 
-        distance of an object from its original pose. Corresponds to the
-        fraction of the maximum distance at which the discount is 50%. If
-        None or 0, no discount is aplied.
-      p: tolerance parameter in the interval (0,1] for the rotation 
-        distance of an object from its original pose. Corresponds to the
-        fraction of the maximum distance at which the discount is 50%. If
-        None or 0, no discount is aplied.
+      params: non negative exponents of the dicount for translation 
+        and rotation distance of an object from its original pose. 
+        Either a tuple with exponents for each mode (translation and 
+        rotation), a scalar to be used in both, or None to use no penalty.
     """
     super(PoseRewarder, self).__init__(*args, **kwargs)
 
-    if p is not None:
-      # Compute position penalty exponent from parameter p.
-      # this parameter gives the fraction of the maximum distance
-      # from original position that corresponds to 1% penalty on 
-      # the reward.
-      p = float(p)
-      if p <= 0:
-        p = None
-      elif p >= 1:
-        p = np.inf
-      else:
-        p = -1/np.log2(p)
-    self._pexp = p
     # Maximum translation distance from original pose (corresponds to the 
     # length of the diagonal of the object image).
     # self._pmax = np.linalg.norm(self._obs.pixel_to_xy(self._obs.shape[1]))
     self._pmax = max(self._obs.pixel_to_xy(self._obs.shape[1]))
-
-    if o is not None:
-      # Compute orientation penalty exponent from parameter o.
-      # this parameter gives the fraction of the maximum distance
-      # from original orientation that corresponds to 1% penalty on 
-      # the reward.
-      o = float(o)
-      if o <= 0:
-        o = None
-      elif o >= 1:
-        o = np.inf
-      else:
-        o = -1/np.log2(o)
-    self._oexp = o
     # Maximum rotation distance from original pose
     self._omax = np.pi
+
+    if params is None:
+      self._pexp, self._oexp = None, None
+    elif np.isscalar(params):
+      if params < 0:
+        raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
+      self._pexp, self._oexp = params, params
+    elif len(params) == 1:
+      if params[0] < 0:
+        raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
+      self._pexp, self._oexp = params*2
+    elif len(params) >= 2:
+      if params[0] < 0 or params[1] < 0:
+        raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
+      self._pexp, self._oexp = params[:2]
+
+    # if p is not None:
+    #   # Compute position penalty exponent from parameter p.
+    #   # this parameter gives the fraction of the maximum distance
+    #   # from original position that corresponds to 1% penalty on 
+    #   # the reward.
+    #   p = float(p)
+    #   if p <= 0:
+    #     p = None
+    #   elif p >= 1:
+    #     p = np.inf
+    #   else:
+    #     p = -1/np.log2(p)
+    # self._pexp = p
+
+    # if o is not None:
+    #   # Compute orientation penalty exponent from parameter o.
+    #   # this parameter gives the fraction of the maximum distance
+    #   # from original orientation that corresponds to 1% penalty on 
+    #   # the reward.
+    #   o = float(o)
+    #   if o <= 0:
+    #     o = None
+    #   elif o >= 1:
+    #     o = np.inf
+    #   else:
+    #     o = -1/np.log2(o)
+    # self._oexp = o
 
   def call(self):
     """Returns the reward computed from the current poses."""
@@ -255,17 +268,19 @@ class OccupationRatioRewarder(Rewarder):
   def __init__(
     self,
     *args,
-    negative=False,
+    params=False,
     o=None,
     **kwargs,
   ):
     """
     Args:
-      negative: if True, the returned reward is the (negative) difference
+      params: if True, the returned reward is the (negative) difference
         between the current occupation ratio and 1 (full target volume). 
     """
     super(OccupationRatioRewarder, self).__init__(*args, **kwargs)
-    self._negative = bool(negative)
+    if not np.isscalar(params):
+      params = params[0]
+    self._negative = bool(params)
 
   def call(self):
     """Returns the reward computed from the occupation ratio."""

@@ -5,6 +5,7 @@ import os
 import sys
 
 import numpy as np
+from scipy import stats
 try:
   from trimesh import creation
   from trimesh import transformations
@@ -72,19 +73,35 @@ def irregular(
     ))
   return mesh
 
-def box(
+def box_(
   radius=0.0625, 
   irregularity=0.2,
   extents_ratio=1/3., 
   subdivisions=2,
+  beta=True,
   seed=None,
 ):
   random = np.random.default_rng(seed)
-
   mesh = creation.icosphere(subdivisions=subdivisions, radius=radius)
 
-  # Concentration (alpha+beta) of the Beta distributions
-  k = 3/irregularity**2 - 1 if irregularity > 0 else None
+  if irregularity > 0:
+    if beta:
+      # Concentration (alpha+beta) of the Beta distributions
+      k = 3/irregularity**2 - 1
+      distr = lambda m: random.beta(
+        m*(k-2) + 1, # alpha
+        (1-m)*(k-2) + 1, # beta
+      )
+    else:
+      distr = lambda m: stats.truncnorm.rvs(
+        -m*2/irregularity,
+        (1-m)*2/irregularity,
+        loc=m, 
+        scale=irregularity/2, 
+        random_state=random
+      )
+  else:
+    distr = lambda m: m
 
   if np.isscalar(extents_ratio):
     # Modes of the Beta distribution for the extents
@@ -94,11 +111,8 @@ def box(
       max(0, (0.5-extents_ratio)/(1-extents_ratio)),
       1.
     ])
-
-    extents = random.beta(
-      m*(k-2) + 1, # alpha
-      (1-m)*(k-2) + 1, # beta
-    ) if k is not None else m
+    
+    extents = distr(m)
 
     # Transform from [0, 1] to [extents_ratio, 1]
     extents = extents_ratio + (1-extents_ratio)*extents
@@ -114,13 +128,80 @@ def box(
   # point. Corresponds to the values that place each point on the surface
   # of the box with given extents.
   m = np.min(extents/np.abs(mesh.vertices), axis=-1)
-
-  scale = random.beta(
-    m*(k-2) + 1, # alpha
-    (1-m)*(k-2) + 1, # beta
-  ) if k is not None else m
+  
+  scale = distr(m)
 
   mesh.vertices *= scale[:,np.newaxis]
+
+  return mesh.convex_hull
+
+def box(
+  radius=0.0625, 
+  irregularity=0.2,
+  extents_ratio=1/3., 
+  subdivisions=2,
+  beta=True,
+  seed=None,
+):
+  random = np.random.default_rng(seed)
+  std = irregularity
+
+  mesh = creation.icosphere(subdivisions=subdivisions, radius=radius)
+
+  if np.isscalar(extents_ratio):
+    # Mean extents (high aspect ratios are more likely)
+    extents = np.array([
+      extents_ratio,
+      max(extents_ratio, 0.5),
+      1.
+    ])
+    
+    # if std:
+    #   extents = stats.truncnorm.rvs(
+    #       (extents_ratio-extents)*2/std,
+    #       (1-extents)*2/std,
+    #       loc=extents, 
+    #       scale=std, 
+    #       random_state=random
+    #     )
+  elif len(extents_ratio) == 3:
+    # Deterministic extents
+    extents = np.array(extents_ratio)/max(extents_ratio)
+  else:
+    raise ValueError("Invalid value {} for argument extents_ratio".format(extents_ratio))
+  # Scale to the size of the inscribed cube.
+  extents *= radius*np.sqrt(3)/3
+
+  # Scaling factors that place each vertex on the surface
+  # of the box with given extents.
+  scale = np.min(extents/np.abs(mesh.vertices), axis=-1)
+  mesh.vertices *= scale[:,np.newaxis]
+
+  # Aply random noise to vertices
+  if irregularity > 0:
+    amax = np.argmax(np.abs(mesh.vertex_normals), axis=-1)
+    dotvn = np.sum(mesh.vertices*mesh.vertex_normals, axis=-1)
+
+    a = - mesh.vertices[np.arange(len(amax)),amax]/mesh.vertex_normals[np.arange(len(amax)),amax]
+    b = 1/2*(-dotvn+np.sqrt(np.maximum(0, dotvn**2-4*(np.linalg.norm(mesh.vertices, axis=-1)**2-radius**2))))
+    
+    if beta:
+      k = 3/irregularity**2 - 1
+      m = -a/(b-a)
+      n = a + (b-a)*random.beta(
+        m*(k-2) + 1, # alpha
+        (1-m)*(k-2) + 1, # beta
+      )
+    else:
+      std = irregularity*radius*np.sqrt(3)/3
+      n = stats.truncnorm.rvs(
+        a/std,
+        b/std,
+        scale=std,
+        random_state=random,
+      )
+
+    mesh.vertices += mesh.vertex_normals*n[:,np.newaxis]
 
   return mesh.convex_hull
 

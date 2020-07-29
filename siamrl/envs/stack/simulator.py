@@ -137,6 +137,8 @@ class Simulator(object):
     """Connect to the physics server."""
     self._id = pb.connect(self._connection_mode)
     self.setTimeStep(self._time_step)
+    if self._connection_mode == pb.GUI:
+      self.configureDebugVisualizer(pb.COV_ENABLE_GUI, 0)
   
   def disconnect(self):
     """Disconnect from the physics server."""
