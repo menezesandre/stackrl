@@ -12,24 +12,66 @@ import numpy as np
 from siamrl import envs
 from siamrl.agents import policies
 
-def _trimmed_goal(observation):
-  shape = observation[1].shape
-  top = shape[0]//2 + 1
-  bottom = shape[0] - top - 1
-  left = shape[1]//2 + 1
-  right = shape[1] - left - 1
-  return observation[0][top:-bottom, left:-right,1]
+def _goal_overlap(observation):
+  g = observation[0][:,:,1]
+  t = observation[1][:,:,0]
+  shape = np.subtract(g.shape, t.shape) + 1
+  overlap = np.zeros(shape)
 
-def random(observation):
+  for i in range(shape[0]):
+    for j in range(shape[1]):
+      overlap[i,j] = np.sum(
+        g[i:i+t.shape[0],j:j+t.shape[1]]*t
+      )
+
+  return overlap/np.max(overlap)
+  
+def random(observation, *args, **kwargs):
   return np.random.rand(
     observation[0].shape[0]-observation[1].shape[0]+1,
     observation[0].shape[1]-observation[1].shape[1]+1
   )
 
+def lowest(observation, *args, **kwargs):
+  x = observation[0][:,:,0]
+  w = observation[1][:,:,0]
+  shape = np.subtract(x.shape, w.shape) + 1
+  h = np.zeros(shape)
+  for i in range(shape[0]):
+    for j in range(shape[1]):
+      h[i,j] = np.max(np.where(
+        w > 0.,
+        x[i:i+w.shape[0], j:j+w.shape[0]] + w,
+        0.,
+      ))
+  return -h
+
+def closest(observation, *args, **kwargs):
+  x = observation[0][:,:,0]
+  w = observation[1][:,:,0]
+  shape = np.subtract(x.shape, w.shape) + 1
+  d = np.zeros(shape)
+  for i in range(shape[0]):
+    for j in range(shape[1]):
+      h = np.where(
+        w > 0.,
+        x[i:i+w.shape[0], j:j+w.shape[0]] + w,
+        0.,
+      )
+      h -= np.where(
+        h != 0.,
+        np.max(h),
+        0.,
+      )
+      d[i,j] = np.sum(h)/np.count_nonzero(h)
+  return d
+
 try:
   import cv2 as cv
 
-  def ccoeff(observation, normed=True):
+  def ccoeff(observation, **kwargs):
+    normed = kwargs.get('normed', True)
+
     img = observation[0][:,:,0]
     tmp = observation[1][:,:,0]
     return -cv.matchTemplate(  # pylint: disable=no-member
@@ -38,7 +80,9 @@ try:
       cv.TM_CCOEFF_NORMED if normed else cv.TM_CCOEFF  # pylint: disable=no-member
     )
 
-  def gradcorr(observation, normed=True):
+  def gradcorr(observation, **kwargs):
+    normed = kwargs.get('normed', True)
+
     img = observation[0][:,:,0]
     tmp = observation[1][:,:,0]
 
@@ -62,6 +106,8 @@ except ImportError:
 
 methods = {
   'random': random,
+  'lowest': lowest,
+  'closest': closest,
   'ccoeff': ccoeff,
   'gradcorr': gradcorr
 }
@@ -78,32 +124,39 @@ class Baseline(policies.PyGreedy):
     **kwargs,
   ):
     if isinstance(method, str):
-      method = method.lower()
-      if method in methods:
-        method = methods[method]
-        if method is None:
-          raise ImportError(
-            "opencv-python must be installed to use {} method.".format(
-              method
+      method_list = method.lower().split('-')
+      for i,m in enumerate(method_list):
+        if m in methods:
+          if methods[m] is not None:
+            method_list[i] = methods[m]
+          else:
+            raise ImportError(
+              "opencv-python must be installed to use {} method.".format(m)
             )
+        else:
+          raise ValueError(
+            "Invalid value {} for argument method. Must be in {}".format(method, methods)
           )
-      else:
-        raise ValueError(
-          "Invalid value {} for argument method. Must be in {}".format(method, methods)
-        )
     elif not callable(method):
       raise TypeError(
         "Invalid type {} for argument method.".format(type(method))
       )
 
+    if len(method_list) > 1:
+      def method(inputs, **kwargs):  # pylint: disable=function-redefined
+        values = [m(inputs,**kwargs) for m in method_list]
+        value = np.ones_like(values[0])
+        for v in values:
+          value *= v-np.min(v)
+        return value
+    else:
+      method = method_list[0]
+
     def model(inputs):
       values = method(inputs, **kwargs)
       if goal:
-        values = np.where(
-          _trimmed_goal(inputs) > 0.,
-          values,
-          np.min(values) - 1e-12, # slightly smaller than the minimum value
-        )
+        min_values = np.min(values) - 1e-12 # slightly smaller than the minimum value
+        values = min_values + (values-min_values)*_goal_overlap(inputs)
       return values
     
     super(Baseline, self).__init__(
@@ -114,20 +167,24 @@ class Baseline(policies.PyGreedy):
       batchwise=batchwise,
     )
 
-def test(env_id, method=None, num_steps=1024, verbose=False, gui=False, sleep=0.5, seed=11):
+def test(env_id, method=None, num_steps=1024, verbose=False, visualize=False, gui=False, save_results=None,sleep=0.5, seed=11):
+  if save_results is None:
+    save_results = method is None
+
   env = gym.make(env_id, use_gui=gui, seed=seed)
-  if len(env.observation_space[0].shape) == 4:
-    batched, batchwise = True,True
-  else:
-    batched, batchwise = False,False
+  batched = len(env.observation_space[0].shape) == 4
 
   if method:
-    policies = {method:Baseline(method=method, batched=batched, batchwise=batchwise)}
-    results=None
+    if isinstance(method, str):
+      method = method.split(',')
+    elif not hasattr(method, '__len__'):
+      method = (method,)
+    policies = {str(m):Baseline(method=m, batched=batched, batchwise=batched) for m in method}
   else:
-    policies = {m:Baseline(method=m, batched=batched, batchwise=batchwise) for m in methods}
+    policies = {m:Baseline(method=m, batched=batched, batchwise=batched) for m in methods}
     policies['random (anywhere)'] = lambda o: env.action_space.sample()
-    results={}
+
+  results = {} if save_results else None
 
   sleep = 1. if sleep > 1 else sleep
   sleep = 0. if sleep < 0 else sleep
@@ -142,7 +199,8 @@ def test(env_id, method=None, num_steps=1024, verbose=False, gui=False, sleep=0.
 
     if gui:
       import pybullet as pb
-      pb.resetDebugVisualizerCamera(1., 90, -45, (0.25,0.25,0))
+      pb.configureDebugVisualizer(pb.COV_ENABLE_GUI, 0)
+      pb.resetDebugVisualizerCamera(.5, 90, -75, (0.25,0.25,0))
       time.sleep(5*sleep)
     
     if verbose:
@@ -151,6 +209,7 @@ def test(env_id, method=None, num_steps=1024, verbose=False, gui=False, sleep=0.
       if gui:
         time.sleep(sleep-(datetime.now().microsecond/1e6)%sleep)
       o,r,d,_=env.step(policy(o))
+      print(r)
       tr+=r
       if d:
         ne+=1
