@@ -42,7 +42,7 @@ def assert_registered(env_id, message=None):
   registry.
   """
   message = message or \
-    "No registered env with id: {}".format(env_id)
+    "No registered env with id {}".format(env_id)
   if not env_id in gym.envs.registry.env_specs:
     raise gym.error.UnregisteredEnv(message)
 
