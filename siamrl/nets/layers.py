@@ -119,8 +119,7 @@ def sequential(
 def default_branch_layers(
   inputs, 
   kernel_initializer='he_uniform', 
-  dtype=None,
-  name=None,
+  **kwargs
 ):
   """Aplies the default sequence of layers for the branches of the 
   PseudoSiamFCN
@@ -144,15 +143,13 @@ def default_branch_layers(
       (k.layers.UpSampling2D, {'size':4, 'interpolation':'bilinear'})
     ],
     kernel_initializer=kernel_initializer,
-    dtype=dtype,
-    name=name,
+    **kwargs,
   )
 
 def default_pos_layers(
   inputs, 
   kernel_initializer='he_uniform',
-  dtype=tf.float32,
-  name=None,
+  **kwargs,
 ):
   """Aplies the default sequence of layers after the correlation for the
   PseudoSiamFCN.
@@ -172,6 +169,5 @@ def default_pos_layers(
       (k.layers.Flatten, {})
     ],
     kernel_initializer=kernel_initializer,
-    dtype=dtype,
-    name=name,
+    **kwargs
   )

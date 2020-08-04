@@ -15,7 +15,7 @@ try:
 except ImportError:
   ndimage = None
 
-def read_csv(fname, columns=None, reduction=None):
+def read_csv(fname, columns=None, reduction=None, dtype=float):
   """Read one or more csv files.
   Args:
     fname: name of the csv file (str), or collection of names, to be read.
@@ -46,7 +46,7 @@ def read_csv(fname, columns=None, reduction=None):
     return {
       key:value for key, value in zip(
         keys, 
-        np.loadtxt(fname, delimiter=',', skiprows=1, unpack=True)
+        np.loadtxt(fname, delimiter=',', skiprows=1, unpack=True, dtype=dtype)
       ) if columns is None or key in columns
     }
   else:
@@ -288,7 +288,7 @@ def plot_eval(path, value=False, baselines=['random', 'ccoeff'], **kwargs):
     fname = os.path.join(path, 'eval.csv')
     split = os.path.join(path, 'curriculum.csv')
     config_file = os.path.join(path, 'config.gin')
-
+  print(baselines)
   if baselines:
     # Store current config state
     _config = gin.config._CONFIG.copy()
@@ -306,7 +306,7 @@ def plot_eval(path, value=False, baselines=['random', 'ccoeff'], **kwargs):
     except OSError:
       # If no config file was parsed, don't show baselines in plot.
       envpath = None
-
+    print(envpath)
     if envpath is not None:
       # Get full path to results file for that env
       rfname = siamrl.datapath(
@@ -315,9 +315,9 @@ def plot_eval(path, value=False, baselines=['random', 'ccoeff'], **kwargs):
         'results.csv',
       )
       if os.path.isfile(rfname):
-        results = read_csv(rfname, columns=['Keys', 'Return'])
+        results = read_csv(rfname, columns=['Keys', 'Return'], dtype=str)
         results = {
-          k:v for k,v in zip(results['Keys'], results['Return']) 
+          k:float(v) for k,v in zip(results['Keys'], results['Return']) 
           if k in baselines
         }
       else:
@@ -367,4 +367,4 @@ def plot(path, value=False, baselines=None):
     if path.startswith(siamrl.datapath('train')):
       raise e
     else:
-      return plot(siamrl.datapath('train', path), value=value)
+      return plot(siamrl.datapath('train', path), value=value, baselines=baselines)
