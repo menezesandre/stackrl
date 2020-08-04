@@ -1,57 +1,49 @@
+from collections import defaultdict
 from datetime import datetime
+import glob
 import os
-import sys
 import time
+import types
 
-import gin
 import gym
-import matplotlib.pyplot as plt
+try:
+  import matplotlib.pyplot as plt
+except ImportError:
+  plt = None
 import numpy as np
 import pybullet as pb
+try:
+  from scipy import ndimage
+except ImportError:
+  ndimage = None
 
-from siamrl import baselines
+import siamrl
 from siamrl import envs
-from siamrl import load_policy
-from siamrl import heatmap
-
+try:
+  from siamrl import heatmap
+except ImportError:
+  heatmap = None
 
 MAX_LINE_VISUALIZE = 3
 
-def write_raw(fname, **kwargs):
-  """Store a set of named arrays in fname.
-  
-  Each line has the following format, where shape and flat data are coma 
-    separated: <name>\t<dtype>\t<shape>\t<flat data>
-  """
-  with open(fname, 'w') as f:
-    for name,value in kwargs.items():
-      if not isinstance(value, np.ndarray):
-        value = np.array(value)
-      f.write('{}\t{}\t{}\t'.format(
-        name,
-        value.dtype,
-        ','.join([str(i) for i in value.shape]),
-      ))
-      value = value.ravel()
-      # Write elements of value one by one, as the array may be to 
-      # large to use astype(str)
-      f.write('{}'.format(value[0]))
-      for v in value[1:]:
-        f.write(',{}'.format(v))
-      f.write('\n')
+def clean(path=None, extensions='.npz'):
+  """Remove all files with extension accessible from root path.
+  Returns:
+    list off all the removed files."""
+  path = path or siamrl.datapath('test')
+  removed = []
 
-def read_raw(fname):
-  """Parse named arrays writen by write_raw in fname."""
-  returns = {}
-  with open(fname) as f:
-    for line in f:
-      name,dtype,shape,data = line[:-1].split('\t')
-      shape = tuple(int(i) for i in shape.split(','))
-      data = np.array(data.split(','))
-      returns[name] = data.astype(dtype).reshape(shape)
-  return returns
+  if os.path.isfile(path):
+    if path.endswith('.npz'):
+      os.remove(path)
+      return removed.append(path)
+  elif os.path.isdir(path):
+    for p in glob.glob(os.path.join(path,'*')):
+      removed += clean(p)
 
-def write_results(fname, force=False, **kwargs):
+  return removed
+
+def write(fname, force=False, **kwargs):
   """Write the data in kwargs to fname.
   If a file with matching header already exists, the data is appended. if
     one of the columns is 'keys', lines with matching keys are replaced.
@@ -63,15 +55,24 @@ def write_results(fname, force=False, **kwargs):
     force: whether to overwrite an existing file if keys don't match the
       header. If False, throws ValueError in that case.
     kwargs: keys are the header and values are iterables of the same length
-      to fill the columns.
+      to fill the columns. If any of the values is scalar, it is broadcast to
+      the same length as the other values.
 
   """
+  # Check size to broadcast scalars
+  for v in kwargs.values():
+    if not np.isscalar(v):
+      size = len(v)
+      break
   # Unify header stiles (e.g. 'action_value' is turned to 'ActionValue')
   # str[:1].upper()+str[1:] is used instead of str.capitalize() to avoid lowering
   # all remaining characters. 
   kwargs = {
-    ''.join([i[:1].upper()+i[1:] for i in k.split('_')]):np.array(v) for k,v in kwargs.items()
+    ''.join([i[:1].upper()+i[1:] for i in k.split('_')]):
+    np.array([v]*size) if np.isscalar(v) else np.array(v) 
+    for k,v in kwargs.items()
   }
+
   if os.path.isfile(fname):
     try:
       with open(fname) as f:
@@ -133,6 +134,10 @@ def write_results(fname, force=False, **kwargs):
       # If force is True, supress the exception and overwrite.
       if not force:
         raise e
+
+  # Create directory if necessary
+  if not os.path.isdir(os.path.dirname(fname)):
+    os.makedirs(os.path.dirname(fname))
 
   with open(fname, 'w') as f:
     # Write header
@@ -197,9 +202,15 @@ def run(
 
   # Shape of the value maps
   vshape = (
-    env.observation_space[0].shape[0]-env.observation_space[1].shape[0]+1,
-    env.observation_space[0].shape[1]-env.observation_space[1].shape[1]+1
+    env.observation_space[0].shape[-3]-env.observation_space[1].shape[-3]+1,
+    env.observation_space[0].shape[-2]-env.observation_space[1].shape[-2]+1
   )
+  
+  multi_action = (
+    isinstance(env.action_space, gym.spaces.Tuple) and 
+    len(env.observation_space[0].shape) == 4
+  )
+
   # Auxiliary variables
   num_policies = len(policies)
   total_num_steps = num_policies*num_steps
@@ -217,23 +228,30 @@ def run(
   )
 
   if visualize:
+    if plt is None:
+      raise ImportError("matplotlib must be instaled to run 'run' with visualize=True.")
     # Visualize at most two lines of MAX_LINE_VISUALIZE value maps simultaneously
     n_visualize = min(num_policies, 2*MAX_LINE_VISUALIZE)
     if n_visualize > MAX_LINE_VISUALIZE:
+      n_line_visualize = MAX_LINE_VISUALIZE
       _, axs = plt.subplots(
-        2,1+MAX_LINE_VISUALIZE, 
+        2,1+n_line_visualize, 
       )
     else:
+      n_line_visualize = n_visualize
       _, axs = plt.subplots(
-        2,1+MAX_LINE_VISUALIZE, 
+        2,1+n_visualize, 
         gridspec_kw={'height_ratios':[4, 1]},
       )
-    for i in range(n_visualize, 2*MAX_LINE_VISUALIZE):
-      ax = axs[i//MAX_LINE_VISUALIZE][i%MAX_LINE_VISUALIZE + 1]
-      ax.set_xticks([])
-      ax.set_yticks([])
-      for spine in ax.spines.values():
-        spine.set_visible(False)
+    for axline in axs:
+      for ax in axline:
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for spine in ax.spines.values():
+          # Prepare spines to mark policy being used
+          spine.set_color((0.993248,0.906157,0.143936, 1.))
+          spine.set_linewidth(3)
+          spine.set_visible(False)
 
   # Run tests
   itime = time.time()
@@ -253,39 +271,50 @@ def run(
       if j == index:
         # Action from current policy, to be performed on environment
         action = a
-      actions[j,i] = np.unravel_index(a, vshape)
-      values[j,i] = v
+      if multi_action:
+        ai,aj = a
+        actions[j,i] = np.unravel_index(aj, vshape)
+        values[j,i] = v[ai]
+      else:
+        actions[j,i] = np.unravel_index(a, vshape)
+        values[j,i] = v
 
     if visualize:
       rgb = env.render(mode='rgb_array')
       # Show observation
       for axl, img, title in zip(axs, rgb, ('Overhead view', 'Object view')):
+        # Clear axis and remove ticks
         axl[0].cla()
-        axl[0].imshow(img)
-        axl[0].set_title(title)
-        # Remove ticks
         axl[0].set_xticks([])
         axl[0].set_yticks([])
+
+        axl[0].imshow(img)
+        axl[0].set_title(title)
 
       min_j = np.clip(index - n_visualize//2, 0, num_policies - n_visualize)
       max_j = min_j + n_visualize
       # Show value maps
       for k,j in enumerate(range(min_j, max_j)):
         ax = axs[k//MAX_LINE_VISUALIZE][1 + k%MAX_LINE_VISUALIZE]
+        # Clear axis and remove ticks
         ax.cla()
-        ax.imshow(values[j,i].reshape(vshape))
-        ax.set_title(keys[j])
-        # Remove ticks
         ax.set_xticks([])
         ax.set_yticks([])
-        # Mark current policy
+
+        ax.imshow(values[j,i].reshape(vshape))
+        ax.set_title(keys[j])
         if j == index:
-          for spine in ax.spines.values():
-            # spine.set_color((0.762373, 0.876424, 0.137064, 1.))
-            spine.set_color((0.993248,0.906157,0.143936, 1.))
-            spine.set_linewidth(3)
+          # Store axis of current policy to highlight
+          current_ax = ax
+
+      # Highlight current policy
+      for spine in current_ax.spines.values():
+        spine.set_visible(True)
 
       plt.pause(max(1e-12, sleep-(time.time()-itime)))
+
+      for spine in current_ax.spines.values():
+        spine.set_visible(False)
     elif sleep:
       time.sleep(max(0, sleep-(time.time()-itime)))
     itime = time.time()
@@ -335,7 +364,7 @@ def analyse(
 ):
   # Set save status
   if save is None:
-    save = not show
+    save = not show and plt is not None
 
   num_policies = keys.size
   num_steps = rewards.shape[-1]
@@ -373,12 +402,16 @@ def analyse(
 
   #Plots
   if save or show:
+    if plt is None:
+      raise ImportError("matplotlib must be installed to run analyse with show=True or save=True.")
+    if not os.path.isdir(dirname):
+      os.makedirs(dirname)
     # Plot returns distribution
     plt.errorbar(keys, returns_mean, yerr=(returns_mean-returns.min(axis=-1), returns.max(axis=-1)-returns_mean), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
     plt.errorbar(keys, returns_mean, yerr=returns_std, fmt='bo', capsize=4, label='Mean +/- std dev')
     plt.xlabel('Policy')
     plt.ylabel('Return')
-    plt.legend()
+    plt.legend(loc='best')
     if save:
       plt.savefig(os.path.join(dirname, 'returns.pdf'))
       plt.savefig(os.path.join(dirname, 'returns.png'))
@@ -393,7 +426,7 @@ def analyse(
     plt.errorbar(keys, rewards_mean, yerr=rewards.std(axis=-1), fmt='bo', capsize=4, label='Mean +/- std dev')
     plt.xlabel('Policy')
     plt.ylabel('Reward')
-    plt.legend()
+    plt.legend(loc='best')
     if save:
       plt.savefig(os.path.join(dirname, 'rewards.pdf'))
       plt.savefig(os.path.join(dirname, 'rewards.png'))
@@ -416,7 +449,7 @@ def analyse(
         plt.errorbar(range(1,episode_length+1), rewards_mean[i], yerr=rewards_std[i], fmt='bo', capsize=4, label='Mean +/- std dev')
         plt.xlabel('Step')
         plt.ylabel('Reward')
-        plt.legend()
+        plt.legend(loc='best')
         plt.title(keys[i])
         if save:
           plt.savefig(os.path.join(dirname, 'rewards_{}.pdf'.format(keys[i])))
@@ -429,9 +462,24 @@ def analyse(
       # Plot means of all policies
       if num_policies > 1:
         for i in range(num_policies):
-          plt.plot(range(1,episode_length+1), rewards_mean[i], label=keys[i])
+          if ndimage is not None:
+            plt.plot(
+              range(1,episode_length+1), 
+              ndimage.gaussian_filter1d(
+                rewards_mean[i], 
+                episode_length*2**(-4), 
+                mode='nearest'
+              ),
+              label=keys[i],
+            )
+          else:
+            plt.plot(
+              range(1,episode_length+1), 
+              rewards_mean[i],
+              label=keys[i],
+            )
 
-        plt.legend()
+        plt.legend(loc='best')
         plt.xlabel('Step')
         plt.ylabel('Reward')
         if save:
@@ -441,6 +489,11 @@ def analyse(
           plt.show()
         else:
           plt.close()
+      
+      del(rewards_mean,rewards_max,rewards_min,rewards_std)
+    else:
+      del(rewards_mean)
+    del(rewards)
 
     if num_policies > 1:
       # Histogram of best policy by episode
@@ -454,7 +507,10 @@ def analyse(
         plt.show()
       else:
         plt.close()
+      del(returns)
+
       # Distance between actions
+      actions = actions.astype('int32')
       actions_distance = np.linalg.norm(
         np.expand_dims(actions, axis=0) - np.expand_dims(actions, axis=1),
         axis=-1,
@@ -484,8 +540,9 @@ def analyse(
             plt.show()
           else:
             plt.close()
+      del(actions, actions_distance)
 
-      # Correlation between value functions
+      # Correlation between value functions <--- Killed here
       corrcoefs = np.corrcoef(values.reshape((num_policies, -1)))
       im,_ = heatmap.heatmap(corrcoefs, keys, keys, cbarlabel='Correlation coefficients')
       heatmap.annotate_heatmap(im)
@@ -496,6 +553,7 @@ def analyse(
         plt.show()
       else:
         plt.close()
+      del(corrcoefs)
 
       # Stepwise values distribution
       values_mean = values.mean(axis=-1)
@@ -549,12 +607,12 @@ def analyse(
         plt.show()
       else:
         plt.close()
+      del(values_mean,values_std,values_above_mean,values_above_std,overlap_above_mean,overlap_above_std)
 
     for i in range(num_policies):
-      plt.hist(values[i].ravel(), bins='auto', density=True, label='All values')
+      plt.hist(values[i].ravel(), bins='auto')
       plt.xlabel('Values (estimated by {})'.format(keys[i]))
       plt.ylabel('Frequency')
-      plt.legend()
       if save:
         plt.savefig(os.path.join(dirname, 'value_hist_{}.pdf'.format(keys[i])))
         plt.savefig(os.path.join(dirname, 'value_hist_{}.png'.format(keys[i])))
@@ -563,10 +621,9 @@ def analyse(
       else:
         plt.close()
 
-      plt.hist(action_values[i], bins='auto', density=True, label='Action values')
+      plt.hist(action_values[i], bins='auto')
       plt.xlabel('Action values (estimated by {})'.format(keys[i]))
       plt.ylabel('Frequency')
-      plt.legend()
       if save:
         plt.savefig(os.path.join(dirname, 'action_value_hist_{}.pdf'.format(keys[i])))
         plt.savefig(os.path.join(dirname, 'action_value_hist_{}.png'.format(keys[i])))
@@ -574,6 +631,7 @@ def analyse(
         plt.show()
       else:
         plt.close()
+    del(values)
 
     # Action values distribution along episode
     if episode_length:
@@ -588,7 +646,7 @@ def analyse(
         plt.errorbar(range(1,episode_length+1), action_values_mean[i], yerr=action_values_std[i], fmt='bo', capsize=4, label='Mean +/- std dev')
         plt.xlabel('Step')
         plt.ylabel('Value (estimated by {})'.format(keys[i]))
-        plt.legend()
+        plt.legend(loc='best')
         if save:
           plt.savefig(os.path.join(dirname, 'action_values_{}.pdf'.format(keys[i])))
           plt.savefig(os.path.join(dirname, 'action_values_{}.png'.format(keys[i])))
@@ -606,21 +664,19 @@ def analyse(
   }
 
 def test(
-  env,
   policies={},
-  num_steps=1024,
+  num_steps=1000,
   verbose=True,
   visualize=False,
   sleep=None,
   show=False,
   save=None,
   seed=11,
+  **kwargs,
 ):
-  """ Run tests and and analyse results.
+  """ Run tests and analyse results.
 
   Args:
-    env: instance of the environment to be used. Must implement the gym.Env
-      interface.
     policies: policies to be used. Either a dict with policy names as keys
       and policy functions (callable) as values, an iterable with policy 
       functions, or a single policy function. Policy functions must return
@@ -633,301 +689,179 @@ def test(
     sleep: time interval (in seconds, geq 0) between steps. If None, defaults
       to 0.5 if visualize is True, 0. otherwise (no sleep).
     show: whether to show plots of the results on the end of the test.
-    save: whether to save results and plots. If None, results are saved
-      if verbose is False and plots are saved if show is False.
+    save: whether to save collectd data and plots. If None, data are saved
+      if verbose is False and plots are saved if show is False. If a string
+      is provided, use it as the save directory.
     seed: seed for the environment.
+    kwargs: passed to envs.make to instantiate the environment.
   """
   # Set save status
   if save is not None:
-    save_results, save_plots = save, save
+    save_results, save_plots = bool(save), bool(save)
   else:
     save_results, save_plots = not verbose, not show
+
+  if isinstance(save, str):
+    basedirname = save
+  else:
+    basedirname = siamrl.datapath('test')
+  timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
   # Only save results if policies are named  
   save_results = save_results and isinstance(policies, dict)
 
-  # Environment directory
-  envdirname = os.path.join(
-    # Package root folder (Siam-RL/)
-    os.path.dirname(os.path.dirname(__file__)),
-    'data',
-    'test',
-    # Folder from env id
-    envs.utils.as_path(env.unwrapped.spec.id),
-  )
-  # Directory for this experiment
-  dirname = os.path.join(
-    envdirname,
-    # Folder from seed and num_steps
-    '{}-{}'.format(seed, num_steps),
-    # Folder from time stamp
-    datetime.now().strftime("%y%m%d-%H%M%S"),
-  )
+  env = envs.make(**kwargs, unwrapped=True)
+  envpath = envs.make(**kwargs, as_path=True)
 
-  data = run(
-    env=env,
-    policies=policies,
-    num_steps=num_steps,
-    verbose=verbose,
-    visualize=visualize,
-    sleep=sleep,
-    seed=seed,
-  )
+  if isinstance(env, types.GeneratorType):
+    env_gen = env
+    envpath_gen = envpath
 
-  if save_results:
-    if not os.path.isdir(dirname):
-      os.makedirs(dirname)
-    np.savez_compressed(os.path.join(dirname, 'data'), **data)
+    # Get first item from curriculum to use as the x axis in the plots
+    xkey, xvalues = next(iter(kwargs['curriculum'].items()))
+    if verbose:
+      xiter = iter(xvalues)
 
-  data = analyse(
-    **data,
-    show=show, 
-    save=save_plots,
-    dirname=dirname,
-  )
-  if save_results:
+    ydict = defaultdict(lambda: list())
+    ystddict = defaultdict(lambda: list())
+
+    for (env,_), (envpath,_) in zip(env_gen, envpath_gen):
+      # Environment directory
+      envdirname = os.path.join(
+        basedirname,
+        envpath,
+      )
+      # Directory for this experiment
+      dirname = os.path.join(
+        envdirname,
+        # Folder from seed and num_steps
+        '{}-{}'.format(seed, num_steps),
+        # Folder from time stamp
+        timestamp,
+      )
+
+      if verbose:
+        print('{} = {}'.format(xkey, next(xiter)))
+
+      data = run(
+        env=env,
+        policies=policies,
+        num_steps=num_steps,
+        verbose=verbose,
+        visualize=visualize,
+        sleep=sleep,
+        seed=seed,
+      )
+
+      if save_results:
+        if not os.path.isdir(dirname):
+          os.makedirs(dirname)
+        np.savez_compressed(os.path.join(dirname, 'data'), **data)
+
+      data = analyse(
+        **data,
+        show=show, 
+        save=save_plots,
+        dirname=dirname,
+      )
+
+      # Update the results on the environment directory. Experiments with
+      # a larger number of steps are prioritized
+      write(os.path.join(envdirname,'results.csv'), **data, priority=num_steps)
+
+      if verbose:
+        print('Average returns (+/- std dev):')
+        for n,r,rd in zip(data['keys'],data['return'],data['return_std']):
+          print('  {}: {} (+/-{})'.format(n,r,rd))
+
+      for n,r,rd in zip(data['keys'],data['return'],data['return_std']):
+        ydict[n].append(r)
+        ystddict[n].append(rd)
+
+    if show or save_plots:
+      if xkey == 'urdfs' and all(isinstance(v,int) for v in xvalues):
+        # In this special case, label the x axis as irregularity
+        xlabel = 'Irregularity (%)'
+      else:
+        xlabel = xkey
+
+      dirname = os.path.join(basedirname, timestamp)
+      if not os.path.isfile(dirname):
+        os.makedirs(dirname)
+
+      # Plot evolution of each policy's return with env parameter
+      for key, yvalues in ydict.items():
+        plt.errorbar(xvalues, yvalues, yerr=ystddict[key], fmt='bo', capsize=4)
+        plt.xlabel(xlabel)
+        plt.ylabel('Return')
+        plt.title(key)
+        if save_plots:
+          plt.savefig(os.path.join(dirname, 'returns_{}_{}.pdf'.format(xkey, key)))
+          plt.savefig(os.path.join(dirname, 'returns_{}_{}.png'.format(xkey, key)))
+        if show:
+          plt.show()
+        else:
+          plt.close()
+      if len(policies) > 1:
+        # Plot evolution of all policies' return with env parameter
+        for key, yvalues in ydict.items():
+          plt.plot(xvalues, yvalues, label=key)
+        plt.xlabel(xkey)
+        plt.ylabel('Return')
+        plt.legend(loc='best')
+        if save_plots:
+          plt.savefig(os.path.join(dirname, 'returns_{}.pdf'.format(xkey)))
+          plt.savefig(os.path.join(dirname, 'returns_{}.png'.format(xkey)))
+        if show:
+          plt.show()
+        else:
+          plt.close()
+  else:
+    # Environment directory
+    basedirname = os.path.join(
+      basedirname,
+      envpath,
+    )
+    # Directory for this experiment
+    dirname = os.path.join(
+      basedirname,
+      # Folder from seed and num_steps
+      '{}-{}'.format(seed, num_steps),
+      # Folder from time stamp
+      timestamp,
+    )
+
+    data = run(
+      env=env,
+      policies=policies,
+      num_steps=num_steps,
+      verbose=verbose,
+      visualize=visualize,
+      sleep=sleep,
+      seed=seed,
+    )
+
+    if save_results:
+      if not os.path.isdir(dirname):
+        os.makedirs(dirname)
+      np.savez_compressed(os.path.join(dirname, 'data'), **data)
+
+    data = analyse(
+      **data,
+      show=show, 
+      save=save_plots,
+      dirname=dirname,
+    )
+
     # Update the results on the environment directory. Experiments with
     # a larger number of steps are prioritized
-    data['priority'] = np.ones_like(data['keys'], dtype=int)*num_steps
-    write_results(os.path.join(envdirname,'results.csv'), **data)
+    write(os.path.join(basedirname,'results.csv'), **data, priority=num_steps)
 
-  if verbose:
-    print('Average returns (+/- std dev):')
-    for n,r,rd in zip(data['keys'],data['return'],data['return_std']):
-      print('  {}: {} (+/-{})'.format(n,r,rd))
-  
-def analyse_npz(fname, show=False, save=None, dirname='.'):
+    if verbose:
+      print('Average returns (+/- std dev):')
+      for n,r,rd in zip(data['keys'],data['return'],data['return_std']):
+        print('  {}: {} (+/-{})'.format(n,r,rd))
+
+
+def analyse_npz(fname, show=False, save=None):
   """Run analyse with data from a previous experience."""
-  analyse(**np.load(fname), show=show, save=save, dirname=dirname)
-
-# -----------------------------------------------------------------------
-
-# def test_(
-#   env_id, 
-#   path='.',
-#   iters=None,
-#   num_steps=1024,
-#   compare_with=None,
-#   verbose=True,
-#   visualize=False,
-#   gui=False, 
-#   sleep=0.5, 
-#   seed=11
-# ):
-#   sleep = 1. if sleep > 1 else 0. if sleep < 0 else sleep
-
-#   env = gym.make(env_id, use_gui=gui)
-#   policies = load_policy(env.observation_space, path=path, iters=iters, value=True)
-#   if not isinstance(policies, list):
-#     policies = [policies]
-#     iters = [iters]
-
-#   n_policies = len(policies)
-
-#   if compare_with:
-
-#     if not isinstance(compare_with, list):
-#       compare_with = [compare_with]
-
-#     hmean_overlap = tuple(tuple([] for _ in policies) for _ in compare_with)
-#     hstd_overlap = tuple(tuple([] for _ in policies) for _ in compare_with)
-#     distance = tuple(tuple([] for _ in policies) for _ in compare_with)
-#     correlation = tuple(tuple([] for _ in policies) for _ in compare_with)
-      
-
-#     for m in compare_with:
-#       policies.append(baselines.Baseline(m, value=True))
-#       iters.append(m)
-
-#   if visualize:    
-#     plot_all = len(policies) > 1 and len(policies) < 5
-#     if plot_all:
-#       fig, axs = plt.subplots(
-#         2,1+len(policies), 
-#         gridspec_kw={'height_ratios':[4, 1]}
-#       )
-#     else:
-#       fig, axs = plt.subplots(
-#         2,2, 
-#         gridspec_kw={'height_ratios':[4, 1]}
-#       )
-#   v_shape = (
-#     env.observation_space[0].shape[0]-env.observation_space[1].shape[0]+1,
-#     env.observation_space[0].shape[1]-env.observation_space[1].shape[1]+1
-#   )
-
-#   for i in range(n_policies):
-#     if verbose and iters[i]:
-#       print('{}'.format(iters[i]))
-
-#     tr = 0.
-#     tv = 0.
-#     ne = 0
-#     env.seed(seed)
-#     o = env.reset()
-
-#     if gui:
-#       pb.removeAllUserDebugItems()
-#       pb.configureDebugVisualizer(pb.COV_ENABLE_GUI, 0)
-#       pb.resetDebugVisualizerCamera(.5, 90, -75, (0.25,0.25,0))
-#       time.sleep(5*sleep)
-  
-#     for n in range(num_steps):
-#       if visualize and plot_all or compare_with:
-#         actions_values = [p(o) for p in policies]
-#         a,v = actions_values[i]
-        
-#         actions = [np.unravel_index(action, v_shape) for action,_ in actions_values]
-#         values = [(value.reshape(v_shape) - np.mean(value))/np.std(value) for _,value in actions_values]
-#       else:
-#         a,v = policies[i](o)
-
-#       if compare_with:
-#         for j, (baction,bvalue) in enumerate(zip(
-#           actions[-len(compare_with):], 
-#           values[-len(compare_with):], 
-#         )):
-#           for k, (action,value) in enumerate(zip(
-#             actions[:-len(compare_with)], 
-#             values[:-len(compare_with)], 
-#           )):
-#             # Overlap between values above mean
-#             hmean_overlap[j][k].append(
-#               np.count_nonzero(np.logical_and(bvalue>0,value>0)) /
-#               np.count_nonzero(np.logical_or(bvalue>0,value>0))
-#             )
-#             # Overlap between values one standard deviation above mean
-#             hstd_overlap[j][k].append(
-#               np.count_nonzero(np.logical_and(bvalue>1,value>1)) /
-#               np.count_nonzero(np.logical_or(bvalue>1,value>1))
-#             )
-#             # Euclidian distance (in pixels) between actions to compare
-#             distance[j][k].append(np.linalg.norm(np.subtract(baction,action)))
-#             # Correlation coefficient between values
-#             correlation[j][k].append(np.corrcoef(bvalue.ravel(), value.ravel())[0,1])
-
-#       if visualize:
-#         o0, o1 = env.render(mode='rgb_array')
-#         axs[0][0].cla()
-#         axs[0][0].imshow(o0)
-#         axs[1][0].cla()
-#         axs[1][0].imshow(o1)
-#         if plot_all:
-#           for j,value in enumerate(values):
-#             axs[0][j+1].cla()
-#             axs[0][j+1].imshow(value)
-#             axs[1][j+1].cla()
-#             axs[1][j+1].imshow(np.where(value>1, value, 1))
-#             if j == i:
-#               axs[1][j+1].set_xlabel('Current policy')
-#         else:
-#           threshold = np.mean(v) + np.std(v)
-#           value = v.reshape(v_shape)
-
-#           axs[0][1].cla()
-#           axs[0][1].imshow(value)
-#           axs[1][1].cla()
-#           axs[1][1].imshow(np.where(value>threshold, value, threshold))
-          
-#         # Remove all axis ticks
-#         plt.xticks([])
-#         plt.yticks([])
-#         # Show figure and pause for the time left to in the sleep period.
-#         plt.pause(sleep-(datetime.now().microsecond/1e6)%sleep)
-#       elif gui:
-#         time.sleep(sleep-(datetime.now().microsecond/1e6)%sleep)
-
-#       o,r,d,_ = env.step(a)
-#       tr += r
-#       tv += v[a]
-#       if d:
-#         ne+=1
-#         if verbose:
-#           print('  Current average ({}): Reward {}, Value {}'.format(
-#             ne,
-#             tr/ne,
-#             tv/n
-#           ))
-#           if compare_with:
-#             for j in range(len(compare_with)):
-#               print('  Compare with {}: Overlap {} {}, Distance {}, Correlation {}'.format(
-#                 iters[n_policies+j],
-#                 np.mean(hmean_overlap[j][i]),
-#                 np.mean(hstd_overlap[j][i]),
-#                 np.mean(distance[j][i]),
-#                 np.mean(correlation[j][i]),
-#               ))
-#         o=env.reset()
-
-#     if verbose:
-#       print('Final average: Reward {}, Value {}'.format(tr/ne, tv/ne))
-  
-#   if visualize:
-#     plt.close()
-  
-#   if compare_with:
-
-#     for j in range(len(policies)-len(compare_with)):
-#       for i in range(len(compare_with)):
-#         print('{} with {}'.format(iters[j], iters[n_policies+i]))
-#         print('  Overlap between regions with value higher than mean: avg {} (std {})'.format(
-#           np.mean(hmean_overlap[i][j]),
-#           np.std(hmean_overlap[i][j]),
-#         ))
-#         print('  Overlap between regions with value at least 1 std dev above mean: avg {} (std {})'.format(
-#           np.mean(hstd_overlap[i][j]),
-#           np.std(hstd_overlap[i][j]),
-#         ))
-#         print('  Correlation coefficients between value maps: avg {} (std {})'.format(
-#           np.mean(correlation[i][j]),
-#           np.std(correlation[i][j]),
-#         ))
-#         print('  Distance between actions: avg {} (std {})'.format(
-#           np.mean(distance[i][j]),
-#           np.std(distance[i][j]),
-#         ))
-#         plt.hist(distance[i][j], bins=16)
-#         plt.xlabel('Distance')
-#         plt.ylabel('Frequency')
-#         plt.show()
-
-
-if __name__ == '__main__':
-  # Default args
-  path,config_file,env = '.','config.gin',None
-  # Parse arguments
-  argv = sys.argv[:0:-1]
-  kwargs = {}
-  while argv:
-    arg=argv.pop()
-    if arg == '--config':
-      config_file = argv.pop()
-    elif arg == '-e':
-      env = argv.pop()
-    elif arg == '--iters':
-      kwargs['iters'] = argv.pop().split(',')
-    elif arg == '-n':
-      kwargs['num_steps'] = int(argv.pop())
-    elif arg == '--compare':
-      kwargs['compare_with'] = argv.pop().split(',')
-    elif arg == '-q':
-      kwargs['verbose'] = False
-    elif arg == '-v':
-      kwargs['visualize'] = True
-    elif arg == '--gui':
-      kwargs['gui'] = True
-    elif arg == '-t':
-      kwargs['sleep'] = float(argv.pop())
-    elif arg == '--seed':
-      kwargs['seed'] = int(argv.pop())
-    else:
-      path = arg
-  # If env is not provided, register it with args binded from config_file
-  if not env:
-    if config_file:
-      try:
-        gin.parse_config_file(os.path.join(path, config_file))
-      except OSError:
-        gin.parse_config_file(config_file)
-    env = envs.stack.register()
-
-  test(env, path, **kwargs)
+  return analyse(**np.load(fname), show=show, save=save, dirname=os.path.dirname(fname))

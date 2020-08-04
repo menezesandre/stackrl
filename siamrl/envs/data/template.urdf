@@ -1,21 +1,24 @@
 <?xml version="1.0"?>
-<robot name="{}">
+<robot name="{name}">
   <link name="link">
     <contact>
-      <lateral_friction value="{}"/>
+      <lateral_friction value="{friction}"/>
     </contact>
     <inertial>
-      <mass value = "{}"/>
-      <inertia ixx="{}" ixy="{}" ixz="{}" iyy="{}" iyz="{}" izz="{}" />
+      <mass value = "{mass}"/>
+      <inertia ixx="{ixx}" ixy="{ixy}" ixz="{ixz}" iyy="{iyy}" iyz="{iyz}" izz="{izz}" />
     </inertial>
     <visual name="visual">
       <geometry>
-        <mesh filename="{}"/>
+        <mesh filename="{mesh}"/>
       </geometry>
+      <material name="material">
+        <color rgba="{r} {g} {b} {a}"/>
+      </material>
     </visual>
     <collision name="collision">
       <geometry>
-        <mesh filename="{}"/>
+        <mesh filename="{mesh}"/>
       </geometry>
     </collision>
   </link>

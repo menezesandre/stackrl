@@ -17,7 +17,8 @@ from siamrl.agents.memory import ReplayMemory
 @gin.configurable(module='siamrl.agents')
 class DQN(tf.Module):
   """DQN agent [1]"""
-  
+  # pylint is messing up with tf...
+  # pylint: disable=no-member,unexpected-keyword-arg,no-value-for-parameter,invalid-unary-operand-type
   metadata = {
     'exploration_modes': [
       'epsilon-greedy',
@@ -144,7 +145,7 @@ class DQN(tf.Module):
         raise ValueError(
           "Invalid value {} for argument optimizer. Must be in {}.".format(
             optimizer,
-            list(self.metadada['optimizers'].keys())
+            list(self.metadata['optimizers'].keys())
           )
         )
     else:

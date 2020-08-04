@@ -1,10 +1,11 @@
 import inspect
+import multiprocessing as mp
 import os
 
+import gin
 import gym
 import numpy as np
 import tensorflow as tf
-import multiprocessing as mp
 
 def get_space_attr(space, attr='shape'):
   """Recursive utility function to get a (possibly nested) attribute of a 
@@ -37,17 +38,20 @@ def get_space_spec(space, remove_first_dim=None):
     get_space_attr(space, 'dtype')
   )
 
-def assert_registered(env_id, message=None):
-  """Raises gym.error.UnregisteredEnv if env_id is not in the gym
-  registry.
-  """
-  message = message or \
-    "No registered env with id {}".format(env_id)
-  if not env_id in gym.envs.registry.env_specs:
-    raise gym.error.UnregisteredEnv(message)
+def isspace(obj):
+  return isinstance(obj, gym.Space)
 
-def make(env, n_parallel=None, block=None, **kwargs):
-  """
+@gin.configurable(module='siamrl.envs')
+def make(
+  env='Stack-v0', 
+  n_parallel=None, 
+  block=None, 
+  curriculum=None,
+  unwrapped=False,
+  as_path=False,
+  **kwargs,
+):
+  """Instantiate an environment wrapped to be compatible with siamrl.Training.
   Args:
     env: Either an instance of a gym.Env or the id of the environment on 
       the gym registry.
@@ -57,40 +61,126 @@ def make(env, n_parallel=None, block=None, **kwargs):
       an instance of gym.Env.
     block: whether calls to step and reset block by default (only used
       when multiprocessing).
+    curriculum: dict of lists with kwargs for each environment in the 
+      curriculum, including a key 'goals' with the goal returns. If 
+      provided, the return is a generator that yields tuples with an 
+      instance of each environment and corresponding goal. 
+    unwrapped: if True, return the unwrapped gym Env. 
+    as_path: if True, instead of an environment instance, the return is a
+      string containing a path generated from the environment's entry point
+      and complete set of parameters (including the kwargs passed to make, 
+      gym registry kwargs and class defaults).
+    kwargs: passed to the environment.
+  Returns:
+    environment instance or, if curriculum is not None, a generator that 
+      yields tuples with environment instances and goal returns. 
   """
-  if isinstance(env, gym.Env) or not n_parallel:
-    return Env(env, **kwargs)
+  if curriculum:
+    return make_curriculum(
+      env, 
+      n_parallel=n_parallel, 
+      block=block, 
+      curriculum=curriculum,
+      unwrapped=unwrapped,
+      as_path=as_path,
+      **kwargs,
+    )
   else:
-    return ParallelEnv(env, n_parallel=n_parallel, block=block, **kwargs)
-
-def as_path(env_id):
-  """Returns a path that captures the registered environment's
-  name and complete set of arguments. May be used to log and 
-  access results for a specific setting."""
-  env_spec = gym.envs.registry.env_specs[env_id]
-
-  entry_point = env_spec.entry_point
-  if not callable(entry_point):
-    entry_point = gym.envs.registration.load(entry_point)
-
-  args = {
-    p.name:(p.default if p.default != p.empty else None)
-    for p in inspect.signature(entry_point).parameters.values()
-  }
-  args.update(env_spec._kwargs)
-
-  path1 = entry_point.__name__
-  path2 = []
-  for k,v in args.items():
-    if k != 'seed':
-      k = k.split('_')
-      if len(k) > 1:
-        k = k[0][:1] + k[-1][:3]
+    if as_path:
+      if isinstance(env, gym.Env):
+        spec = env.unwrapped.spec
+      elif isinstance(env, str):
+        spec = gym.envs.registry.env_specs[env]
       else:
-        k = k[0][:4]
-      path2.append(k + str(v))
-  path2 = ','.join(path2).replace(' ', '').replace("'", '').replace('"','')
-  return os.path.join(path1,path2)
+        raise TypeError(
+          "Invalid type {} for argument env.".format(type(env))
+        )
+
+      entry_point = spec.entry_point
+      if not callable(entry_point):
+        entry_point = gym.envs.registration.load(entry_point)
+
+      # Get entry point's default parameters
+      args = {
+        p.name:(p.default if p.default != p.empty else None)
+        for p in inspect.signature(entry_point).parameters.values()
+      }
+      # Update with registered kwargs
+      args.update(spec._kwargs)
+      # Update with provided kwargs
+      args.update(kwargs)
+      
+      path = []
+      # Make a string with arg name and value for each argument
+      for k,v in args.items():
+        if k != 'seed':
+          k = k.split('_')
+          # Each name uses at most 4 chars
+          if len(k) > 1:
+            k = k[0][:1] + k[-1][:3]
+          else:
+            k = k[0][:4]
+          path.append(k + str(v))
+      # Join all argument strings with commas, removing spaces and quotation marks
+      path = ','.join(path).replace(' ', '').replace("'", '').replace('"','')
+      # Add the entry point's name
+      return os.path.join(entry_point.__name__, path)
+    elif unwrapped:
+      if isinstance(env, gym.Env):
+        return env
+      elif isinstance(env, str):
+        return gym.make(env, **kwargs)
+      else:
+        raise TypeError(
+          "Invalid type {} for argument env.".format(type(env))
+        )
+    else:
+      if not n_parallel:
+        return Env(env, **kwargs)
+      else:
+        return ParallelEnv(env, n_parallel=n_parallel, block=block, **kwargs)
+
+def make_curriculum(
+  env='Stack-v0', 
+  n_parallel=None, 
+  block=None, 
+  curriculum={},
+  unwrapped=False,
+  as_path=False,
+  **kwargs,
+):
+  """Generator function that yields tuples with environment instances and goal returns.
+  Args:
+    see make
+  """
+  if 'goals' in curriculum:
+    goals = curriculum.pop('goals')
+  else:
+    goals = None
+    # raise ValueError("Missing key 'goals' in curriculum.")
+
+  # Turn dict of lists to list of dicts
+  curriculum = [dict(zip(curriculum.keys(),values)) for values in zip(*curriculum.values())]
+  
+  if goals is not None and len(goals) != len(curriculum):
+    raise ValueError("length of goals doesn't match number of environments")
+  
+  for i, cargs in enumerate(curriculum):
+    env_instance =  make(
+      env, 
+      n_parallel=n_parallel, 
+      block=block, 
+      curriculum=None,
+      unwrapped=unwrapped,
+      as_path=as_path,
+      **cargs, 
+      **kwargs,
+    )
+    if goals is None:
+      yield env_instance, None
+    else:
+      yield env_instance, goals[i]
+
 
 class Env(object):
   """Wraps a gym Env to receive and return tensors with batch dimension.
@@ -228,20 +318,24 @@ class ParallelEnv(Env):
   ):
     """
     Args:
-      env_id: id of the environment on the gym registry.
+      env_id: id of the environment on the gym registry. If a gym.Env instance
+        is provided, the id is taken from its spec. Note that this ignores any
+        kwargs used to make that environment.
       n_parallel: number of environments to run in parallel processes. If
         None (or 0), the number of CPUs in the system is used.
       block: whether calls to step and reset block by default. If None, 
         defaults to False.
       seed: seed of the environments' random number generators. Incremented 
-        for each of the parallel envs to make it unique.      
+        for each of the parallel envs to make it unique.
+      kwargs: passed to the environment.
     """
-    # Assert env is registered
-    assert_registered(env_id)
+    # If env is a gym.Env instance, get id
+    if isinstance(env, gym.Env):
+      env = env.unwrapped.spec.id
 
-    super(ParallelEnv, self).__init__(env_id, seed=seed, **kwargs)
+    super(ParallelEnv, self).__init__(env, seed=seed, **kwargs)
     # Store arguments
-    self._env_id = env_id
+    self._env_id = env
     self._block = block
     self._seed = seed
     self._kwargs = kwargs

@@ -277,6 +277,9 @@ class Simulator(object):
         self._spawn_position, 
         self._spawn_orientation
       )
+      # if self._connection_mode == pb.GUI:
+      #   if self.getVisualShapeData(self._new)[0][7]==(1.,1.,1.,1.):
+      #     self.changeVisualShape(self._new, -1, rgbaColor=(0.5,0.5,0.5,0.95))
       self._has_new_object = True
 
   def _place(self, position, orientation):

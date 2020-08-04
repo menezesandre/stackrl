@@ -1,4 +1,3 @@
-import gin
 import gym
 from gym import spaces
 from gym.envs import registry
@@ -9,14 +8,14 @@ from siamrl.envs import data
 from siamrl.envs.stack.simulator import Simulator, TestSimulator
 from siamrl.envs.stack.observer import Observer
 from siamrl.envs.stack.rewarder import Rewarder, PoseRewarder, OccupationRatioRewarder
-from siamrl.baselines import Baseline
+# from siamrl.baselines import Baseline
 
 try:
   import matplotlib.pyplot as plt
 except ImportError:
   plt = None
 
-DEFAULT_EPISODE_LENGTH = 32
+DEFAULT_EPISODE_LENGTH = 40
 
 class StackEnv(gym.Env):
   metadata = {
@@ -28,7 +27,7 @@ class StackEnv(gym.Env):
   def __init__(
     self,
     episode_length=DEFAULT_EPISODE_LENGTH,
-    urdfs='train',
+    urdfs=None,
     object_max_dimension=0.125,
     use_gui=False,
     simulator=None,
@@ -89,8 +88,9 @@ class StackEnv(gym.Env):
     """
     self._length = episode_length
     # Set the files list
-    urdfs = urdfs or {}
-    if isinstance(urdfs, str):
+    if urdfs is None:
+      urdfs = {}
+    if isinstance(urdfs, (str,int)):
       self._list = data.generated(name=urdfs)
     elif isinstance(urdfs, float):
       self._list = data.generated(rectangularity=urdfs)
@@ -341,7 +341,7 @@ class StackEnv(gym.Env):
 class StartedStackEnv(StackEnv):
   def __init__(
     self,
-    episode_length=DEFAULT_EPISODE_LENGTH,
+    episode_length=DEFAULT_EPISODE_LENGTH//2,
     min_episode_length=None,
     n_objects=DEFAULT_EPISODE_LENGTH,
     start_policy=None,
@@ -355,8 +355,7 @@ class StartedStackEnv(StackEnv):
         between min_episode_length and episode_length.
       n_objects: number of objects used in each episode. An episode 
         starts from a set of already placed objects, such that the number
-        of remaining objects makes the episode length. If smaller than
-        episode_length, episode_length is used instead.
+        of remaining objects makes the episode length.
       start_policy: policy used to place the initial number of objects at
         the beggining of an episode. Either a string identifying one of 
         the policies implemented in siamrl.baselines or a callable 
@@ -366,7 +365,10 @@ class StartedStackEnv(StackEnv):
         indexes [h, w].
       kwargs: see super.
     """
-    n_objects = max(n_objects, episode_length)
+    if n_objects < episode_length:
+      raise ValueError(
+        "n_objects can't be less than episode_length. Got {} objects for {} steps long episodes.".format(n_objects, episode_length)
+      )
     super(StartedStackEnv, self).__init__(
       episode_length=n_objects, 
       flat_action=flat_action,
@@ -380,28 +382,39 @@ class StartedStackEnv(StackEnv):
       self._n_start_steps = n_objects - episode_length
 
     if start_policy is None:
-      # Try to load ccoeff policy unless opencv-python is not installed.
-      # In that case, use random.
-      try:
-        self._start_policy = Baseline(
-          method='ccoeff', 
-          flat=flat_action
-        )
-      except ImportError:
-        self._start_policy = Baseline(
-          method='random', 
-          flat=flat_action
-        )
-    elif isinstance(start_policy, str):
-      self._start_policy = Baseline(
-        method=start_policy, 
-        flat=flat_action
-      )
+      # Lowest position inside goal
+      def start_policy(inputs):
+        x = inputs[0][:,:,0]
+        g = inputs[0][:,:,1]
+        w = inputs[1][:,:,0]
+
+        wmax = w.max()
+        wcount = np.count_nonzero(w)
+
+        v = np.ones(np.subtract(x.shape,w.shape) + 1)*np.inf
+        for i in v.shape[0]:
+          for j in v.shape[1]:
+            if (
+              np.any(g[i:i+w.shape[0],j:j+w.shape[1]]) and 
+              np.count_nonzero(w*g[i:i+w.shape[0],j:j+w.shape[1]]) == wcount
+            ):
+              v[i,j] = np.max(w+x[i:i+w.shape[0],j:j+w.shape[1]])
+              if v[i,j] == wmax:
+                # No need to calculate the remaining values as it can't 
+                # be lower than this
+                return i*v.shape[0]+j if flat_action else np.array((i,j))                
+
+        if flat_action:
+          return np.argmin(v)
+        else:
+          return np.array(np.unravel_index(np.argmin(v), v.shape))
+
+      self._start_policy = start_policy
     elif callable(start_policy):
       self._start_policy = start_policy
     else:
       raise TypeError(
-        "Invalid type {} for argument start_policy. Must be a str or callable.".format(type(start_policy))
+        "Invalid type {} for argument start_policy. Must be callable.".format(type(start_policy))
       )
     assert self.action_space.contains(
       self._start_policy(self.observation_space.sample())
@@ -423,16 +436,18 @@ class StartedStackEnv(StackEnv):
 class TestStackEnv(StackEnv):
   def __init__(
     self,
-    ordering_freedom=True,
+    ordering_freedom=False,
     orientation_freedom=3,
     **kwargs
   ):
     """
     Args:
       ordering_freedom: If True, all objects are presented at the begining
-        of the episode and the action includes the choice of the object 
+        of the episode and the action includes the choice of the next object 
         to be placed.
-      orientation_freedom: See Observer
+      orientation_freedom: defines the number of possible orientaitons for 
+        the object (see Observer). If greater than 0, the action includes the
+        choice of which orientation to use in the placing pose.
     """
     super(TestStackEnv, self).__init__(
       simulator=TestSimulator if ordering_freedom else Simulator, 
@@ -518,7 +533,47 @@ class TestStackEnv(StackEnv):
     self._done = False
     self._update_spaces()
     return self.observation
+
+  def render(self, mode='human'):
+    if mode not in self.metadata['render.modes']:
+      return super(TestStackEnv, self).render(mode=mode)
+
+    m, n = self._obs.state
+    n = n[0]
+    _max = np.max(m)
+    r = m/_max if _max!=0 else m
+    b = 1 - r
+    g = np.ones(r.shape)*0.5
+    g[self._rew.goal_bin] += 0.1
+    rgb0 = np.stack([r,g,b], axis=-1)
+
+    _max = np.max(n)
+    r = n/_max if _max!=0 else n
+    b = 1 - r
+    g = np.ones(r.shape)*0.5
+    rgb1 = np.stack([r,g,b], axis=-1)
     
+    if mode == 'human':
+      if plt is None:
+        raise ImportError("'render' requires matplotlib.pyplot to run in 'human' mode.")
+        
+
+      if not (self._fig and plt.fignum_exists(self._fig.number)):
+        width_ratio = rgb0.shape[1]//rgb1.shape[1]
+        self._fig, self._axs = plt.subplots(
+          1, 2, 
+          gridspec_kw={'width_ratios':[width_ratio, 1]}
+        )
+
+      self._axs[0].cla()
+      self._axs[0].imshow(rgb0)
+      self._axs[1].cla()
+      self._axs[1].imshow(rgb1)
+      self._fig.show()
+      
+    elif mode == 'rgb_array':
+      return rgb0, rgb1
+
   def _update_spaces(self):
     n = self._obs.num_objects
     for obs, high in zip(self.observation_space, self._obs_high):
@@ -531,7 +586,6 @@ class TestStackEnv(StackEnv):
 
     self.action_space[0].n = n
 
-@gin.configurable(module='siamrl.envs.stack')
 def register(env_id=None, entry_point=None, **kwargs):
   """Register a StackEnv in the gym registry.
   Args:
@@ -570,25 +624,3 @@ def register(env_id=None, entry_point=None, **kwargs):
   )
 
   return env_id
-
-@gin.configurable(module='siamrl.envs.stack')
-def curriculum(goals=[], ckwargs={}, **kwargs):
-  """Registers a set of environments to form a curriculum.
-  Args:
-    goals: list of goal reward for each environment.
-    ckwargs: changing keyword arguments. Dictionary of lists.
-      Each list has the values of the corresponding keyword
-      argument for each environment.
-    kwargs: constant keyword aguments (for all environments
-      registered).
-  Returns:
-    List of tuples with registered environment ids and
-    respective goals.
-  """
-  # TODO: Get goals from baseline results if not provided.
-  ids = []
-  # Turn dict of lists to list of dicts
-  ckwargs = [dict(zip(ckwargs,values)) for values in zip(*ckwargs.values())]
-  for g, a in zip(goals, ckwargs):
-    ids.append((register(**a, **kwargs), g))
-  return ids

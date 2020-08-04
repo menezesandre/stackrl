@@ -1,7 +1,5 @@
-import os
 import time
 
-import gin
 import tensorflow as tf
 
 class Timer(object):

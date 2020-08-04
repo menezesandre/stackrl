@@ -11,7 +11,6 @@ while [ -n "$1" ]; do
       TAG=":$2"
       shift
       ;;
-    -c) CURRICULUM=" --curriculum" ;;
     -l) eval "$SOURCE_DIR/.log.sh &" ;;
     -i) MODE="-it";;
     -*) echo "Option $1 not recognized" ;;
@@ -24,8 +23,8 @@ if [ -n "$DIR" ]; then
   CID="$SOURCE_DIR/.cid_$DIR"
   DIR="$SOURCE_DIR/$DIR"
 else
-  CID="$SOURCE_DIR/.cid_test"
-  DIR="$SOURCE_DIR/test"
+  CID="$SOURCE_DIR/.cid_train"
+  DIR="$SOURCE_DIR/train"
 fi
 
 if [ -z "$MODE" ]; then
@@ -53,4 +52,4 @@ else
   fi
 fi
 
-eval "docker run $GPU $MODE --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/siamrl$TAG python -m siamrl -d ./tmp$CURRICULUM$REDIRECT"
+eval "docker run $GPU $MODE --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/siamrl$TAG python -m siamrl train -c -d ./tmp$REDIRECT"

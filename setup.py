@@ -12,7 +12,8 @@ with open(os.path.join(os.path.dirname(__file__),'siamrl', '__init__.py')) as f:
 version = '{MAJOR_VERSION}.{MINOR_VERSION}.{PATCH_VERSION}'.format(**version)
 
 REQUIRES = [
-  'numpy', 
+  'numpy',
+  'scipy',
   'gym', 
   'pybullet',
   'gin-config',
@@ -25,7 +26,7 @@ try:
   import tensorflow as tf
   assert int(tf.__version__.split('.')[0]) >= 2 # pylint: disable=no-member
 except (ImportError, AssertionError):
-  REQUIRES.insert(-2, 'tensorflow>=2.0.0')
+  REQUIRES.insert(0, 'tensorflow>=2.0.0')
 
 with open('README.md', encoding='utf-8') as f:
   long_description = f.read()

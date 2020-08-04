@@ -1,30 +1,33 @@
 # Set environment parameters
 
-# stack.register.episode_length=32
-# stack.register.urdfs='train'
-# stack.register.object_max_dimension=0.125
-# stack.register.use_gui=False
-# stack.register.simulator=None
-# stack.register.sim_time_step=1/100.
-# stack.register.gravity=9.8
-# stack.register.num_sim_steps=None
-# stack.register.velocity_threshold=0.01
-# stack.register.smooth_placing = True
-# stack.register.observer=None
-# stack.register.observable_size_ratio=4
-# stack.register.resolution_factor=5
-# stack.register.max_z=1
-# stack.register.rewarder=None
-# stack.register.goal_size_ratio=.25
-# stack.register.reward_scale=1.
-# stack.register.reward_params=None
-# stack.register.flat_action=True
-# stack.register.dtype='float32'
+# envs.make.env='Stack-v0'
 
-# eval/stack.register.episode_length = 0
+# envs.make.episode_length=40
+# envs.make.urdfs=None
+# envs.make.object_max_dimension=0.125
+# envs.make.use_gui=False
+# envs.make.simulator=None
+# envs.make.sim_time_step=1/100.
+# envs.make.gravity=9.8
+# envs.make.num_sim_steps=None
+# envs.make.velocity_threshold=0.01
+# envs.make.smooth_placing = True
+# envs.make.observer=None
+# envs.make.observable_size_ratio=4
+# envs.make.resolution_factor=5
+# envs.make.max_z=1
+# envs.make.rewarder=None
+# envs.make.goal_size_ratio=.25
+# envs.make.reward_scale=1.
+# envs.make.reward_params=None
+# envs.make.flat_action=True
+# envs.make.dtype='float32'
 
-# stack.curriculum.goals = []
-# stack.curriculum.ckwargs = {}
+# envs.make.curriculum = {'goals':[], 'urdfs':[]}
+
+# eval/envs.make.episode_length = 40
+# eval/envs.make.urdfs = 50
+# eval/envs.make.curriculum = None
 
 # Set network parameters
 
@@ -101,8 +104,9 @@
 
 # Set training parameters
 
+# siamrl.Training.env = @envs.make
 # siamrl.Training.num_parallel_envs = 1
-# siamrl.Training.eval_env = None
+# siamrl.Training.eval_env = @eval/envs.make
 # siamrl.Training.net = @nets.PseudoSiamFCN
 # siamrl.Training.agent = @agents.DQN
 # siamrl.Training.train_reward_buffer_length = 10

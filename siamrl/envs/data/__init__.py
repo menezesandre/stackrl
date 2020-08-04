@@ -1,45 +1,40 @@
 import glob
 import os
 
-def path(path=None):
+try:
+  from siamrl.envs.data.generator import generate
+except ImportError:
+  generate = None
+
+def path(*args):
   """
   Args:
-    path: relative path from this directory
+    args: relative path from this directory
       ('siamrl/envs/data').
   Return:
-    The absolute path to 'siamrl/envs/data/path' or,
-    if no path is given, to this directory.
-  Raises:
-    FileNotFoundError: if path doesn't exist in this
-      directory.
+    The absolute path to 'siamrl/envs/data/arg0/...' or,
+    if no arg is given, to this directory.
   """
-  dirname = os.path.dirname(__file__)
-  if path:
-    path = os.path.join(dirname,path)
-    if os.path.exists(path):
-      return path
-    else:
-      raise FileNotFoundError(
-        'No such file or directory: {}'.format(path)
-      )
-  else:
-    return dirname
+  return os.path.join(
+    os.path.dirname(__file__),
+    *args,
+  )
 
 _open = open
 def open(file, *args, **kwargs):
   """Wrapper of the built-in function open() that prepends 
-    the absolute path to 'siamrl/envs/data' to the file path."""
-  return _open(os.path.join(path(), file), *args, **kwargs)
+    the absolute path to 'siamrl/envs/data' to file."""
+  return _open(path(file), *args, **kwargs)
 
-def files(pattern):
+def matching(*args):
   """
   Args:
-    pattern: format of the names of the required files.
+    args: relative path from this directory, including patterns.
   Return:
     A list of the files from 'siamrl/envs/data' directory that
     match the pattern.
   """
-  return glob.glob(os.path.join(path(), pattern))
+  return glob.glob(path(*args))
 
 def generated(
   name=None, 
@@ -62,22 +57,25 @@ def generated(
     aspectratio: if provided, returned files are filtered by object 
       aspect ratio. Same type as rectangularity.
   """
-  directory = 'generated'
   if test:
-    directory = os.path.join(directory, 'test')
-  flist = files(os.path.join( 
-    directory,
-    name+'_*.urdf' if name else '*.urdf',
-  ))
+    flist = matching(
+      'generated',
+      'test',
+      '{}_*.urdf'.format(name) if name is not None else '*.urdf',
+    )
+  else:
+    flist = matching(
+      'generated',
+      '{}_*.urdf'.format(name) if name is not None else '*.urdf',
+    )
   
   # Compatibility with old names
   if not flist:
-    flist = files(os.path.join( 
-      directory,
+    flist = matching( 
+      'generated',
       'compat',
-      name+'*.urdf',
-    ))
-
+      '{}*.urdf'.format(name),
+    )
 
   if volume or rectangularity or aspectratio:
     raise NotImplementedError('Filtering not supported yet.')
