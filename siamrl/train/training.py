@@ -396,12 +396,14 @@ class Training(object):
     self._eval_reward.reset(full=True)
     self._eval_env.seed(self._eval_seed)
     step = self._eval_env.reset()
+    if callable(step):
+      step = step()
     values = []
     while not self._eval_reward.full:
-      if callable(step):
-        step = step()
       a, value = self._agent.policy(step[0], values=True)
       step = self._eval_env.step(a)
+      if callable(step):
+        step = step()
       self._eval_reward += step
       values.append(value)
     
