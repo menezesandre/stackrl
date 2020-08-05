@@ -310,7 +310,7 @@ class ParallelEnv(Env):
 
   def __init__(
     self,
-    env_id,
+    env,
     n_parallel=None,
     block=None,
     seed=None,
@@ -318,7 +318,7 @@ class ParallelEnv(Env):
   ):
     """
     Args:
-      env_id: id of the environment on the gym registry. If a gym.Env instance
+      env: id of the environment on the gym registry. If a gym.Env instance
         is provided, the id is taken from its spec. Note that this ignores any
         kwargs used to make that environment.
       n_parallel: number of environments to run in parallel processes. If
