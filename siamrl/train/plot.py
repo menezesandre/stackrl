@@ -128,7 +128,7 @@ def _plot(fname, x_key, y_keys, smooth=0, split=None, baselines=None, show=False
     except KeyError:
       ys_std = None
 
-  fig, axs = plt.subplots(len(ys),1,sharex=True)
+  _, axs = plt.subplots(len(ys),1,sharex=True)
   if len(ys) == 1:
     # To be consistent for any number of targets
     axs = (axs,)
