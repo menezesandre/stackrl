@@ -10,13 +10,14 @@ class ReplayMemory(tf.Module):
   """Memory for experience replay, supporting prioritized experience 
   replay."""
   # Small constant to prevent sample probability from becoming zero.
-  epsilon = 1e-10
+  epsilon = 1e-9
   def __init__(
     self,
     state_spec,
     max_length,
     alpha=None,
     beta=None,
+    iters_counter=None,
     n_steps=None,
     seed=None,
     name='ReplayMemory'
@@ -29,10 +30,15 @@ class ReplayMemory(tf.Module):
       max_length: maximum number of transitions to be stored on memory 
         (will be truncated to be divisible by state_spec's batch size).
       alpha: exponent that determines how much prioritization is used 
-        (0 corresponds to no prioritization). If None, defaults to 0.
+        (0 corresponds to no prioritization). Either a numeric scalar or
+        a callable that receives the iteration number and returns the 
+        current value. If None, defaults to 0.
       beta: importance sampling weights exponent that determines how much
         of the bias introduced by the non-uniform sample probabilities
-        is compensated by the weights. If None, defaults to 1.
+        is compensated by the weights. Same type as alpha. If None, 
+        defaults to 1.
+      iters_counter: variable from which to read the current iteration 
+        number. Used if alpha or beta are callable.
       n_steps: number of steps advanced in a transition returned from 
         sample (i.e. next_state is this number of steps ahead of state). 
         If None, defaults to 1.
@@ -55,8 +61,22 @@ class ReplayMemory(tf.Module):
         -1
       )
       # Set prioritization and bias compensation
-      self._alpha = tf.constant(alpha or 0., dtype=tf.float32)
-      self._beta = tf.constant(beta or 1., dtype=tf.float32)
+      if callable(alpha):
+        self._alpha = alpha
+        if iters_counter is None:
+          raise ValueError("iters_counter must be provided with a callable alpha")
+      else:
+        self._alpha = tf.constant(alpha or 0., dtype=tf.float32)
+      if callable(beta):
+        self._beta = beta
+        if iters_counter is None:
+          raise ValueError("iters_counter must be provided with a callable beta")
+      else:
+        if beta is None:
+          beta = 1.
+        self._beta = tf.constant(beta, dtype=tf.float32)
+      self._iters_counter = iters_counter
+
       # Set length of returned transitions
       self._n_steps = tf.constant(n_steps or 1, dtype=tf.int32)
       self._n_steps_range = tf.squeeze(
@@ -110,6 +130,18 @@ class ReplayMemory(tf.Module):
   @property
   def max_length(self):
     return self._max_length.numpy()
+  @property
+  def alpha(self):
+    if callable(self._alpha):
+      return self._alpha(self._iters_counter)
+    else:
+      return self._alpha
+  @property
+  def beta(self):
+    if callable(self._beta):
+      return self._beta(self._iters_counter)
+    else:
+      return self._beta
 
   # @tf.Module.with_name_scope
   def add(self, state, reward, terminal, action):
@@ -123,6 +155,25 @@ class ReplayMemory(tf.Module):
     self._actions.scatter_nd_update(indexes,action)
     # Set this element as unsampleable (until next_state is available)
     self._logits.scatter_nd_update(indexes, [-inf]*self._n_parts)
+    
+    # If any of the updated elements was the max or min logit, recompute it
+    if tf.reduce_any(self._max_logit_index==indexes) and self._insert_index > 0:
+      index = tf.math.argmax(self._logits, output_type=tf.int32)
+      self._max_logit_index.assign(index)
+      self._max_logit.assign(self._logits[index])
+    if tf.reduce_any(self._min_logit_index==indexes) and self._insert_index > 0:
+      masked_logits = self._logits*tf.cast(
+        tf.logical_not(tf.math.is_inf(self._logits)),
+        tf.float32,
+      )
+      index = tf.math.argmin(masked_logits, output_type=tf.int32)
+      value = tf.debugging.assert_all_finite(
+        masked_logits[index],
+        "No sampleable transition (failed to compute min logit)"
+      )
+      self._min_logit_index.assign(index)
+      self._min_logit.assign(value)
+
     # Set element from n steps back as sampleable if there's no episode
     # boundary.
     indexes = self._offsets + (self._insert_index-self._n_steps_range) % self._max_length
@@ -165,7 +216,7 @@ class ReplayMemory(tf.Module):
     z = -tf.math.log(-tf.math.log(
       tf.random.uniform(tf.shape(self._logits), seed=self._seed)
     ))
-    values,indexes = tf.math.top_k(self._logits+z, k=minibatch_size)
+    values,indexes = tf.math.top_k(self.alpha*self._logits+z, k=minibatch_size)
     # Assert that no 'unsampleable' values were sampled (this would mean 
     # that the number of sampleable elements is smaller than 
     # minibatch_size)
@@ -198,7 +249,7 @@ class ReplayMemory(tf.Module):
     # Get rewards
     rewards = self._rewards.sparse_read(next_indexes)
     if get_weights:
-      weights=tf.math.exp(self._beta*(
+      weights=tf.math.exp(self.beta*self.alpha*(
         self._min_logit-self._logits.sparse_read(indexes)
       ))
       return indexes, weights, (states, actions, rewards, next_states, terminal)
@@ -212,7 +263,7 @@ class ReplayMemory(tf.Module):
       indexes: where to update the priorities, as returned by sample.
       deltas: error obtained on each transition on last update.
     """
-    logits = tf.math.log(tf.math.pow(deltas+self.epsilon, self._alpha))
+    logits = tf.math.log(deltas+self.epsilon)
     # Update logits
     self._logits.scatter_nd_update(
       tf.expand_dims(indexes,-1), 
@@ -223,23 +274,32 @@ class ReplayMemory(tf.Module):
     max_index = indexes[argmax]
     max_logit = logits[argmax]
     if max_logit>=self._max_logit:
+      # If the maximum of the updated logits is greater than the previous
+      # maximum logit, update it.
       self._max_logit_index.assign(max_index)
-      self._max_logit.assign(max_logit)  
-    elif tf.reduce_any(max_index==indexes):
+      self._max_logit.assign(max_logit)
+    elif tf.reduce_any(self._max_logit_index==indexes):
+      # If the previous maximum was updated (to a smaller value, otherwise
+      # the previous condition would be true), recompute the maximum logit.
       index = tf.math.argmax(self._logits, output_type=tf.int32)
       self._max_logit_index.assign(index)
       self._max_logit.assign(self._logits[index])
+
     # Update min logit if necessary
     argmin = tf.math.argmin(logits)
     min_index = indexes[argmin]
     min_logit = logits[argmin]
     if min_logit<=self._min_logit:
+      # If the minimum of the updated logits is less than the previous
+      # minimum logit, update it.
       self._min_logit_index.assign(min_index)
       self._min_logit.assign(min_logit)
     elif tf.reduce_any(self._min_logit_index==indexes):
+      # If the previous minimum was updated (to a greater value, otherwise
+      # the previous condition would be true), recompute the minimum logit.
       masked_logits = self._logits*tf.cast(
         tf.logical_not(tf.math.is_inf(self._logits)),
-        dtype=tf.float32
+        tf.float32,
       )
       index = tf.math.argmin(masked_logits, output_type=tf.int32)
       value = tf.debugging.assert_all_finite(

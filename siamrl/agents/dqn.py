@@ -12,6 +12,7 @@ References:
 import gin
 import tensorflow as tf
 from tensorflow import keras as k
+
 from siamrl.agents.memory import ReplayMemory
 
 @gin.configurable(module='siamrl.agents')
@@ -50,8 +51,6 @@ class DQN(tf.Module):
     collect_batch_size=None,
     exploration_mode=None,
     exploration=None,
-    final_exploration=None,
-    final_exploration_iter=None,
     prioritization=None,
     priority_bias_compensation=None,
     double=False,
@@ -171,46 +170,36 @@ class DQN(tf.Module):
         "Invalid type {} for argument exploration_mode. Must be int or str.".format(type(exploration_mode))
       )
 
+    # Check if exploration parameter is inside bounds for the given exploration mode
     if self._exploration_mode == 'epsilon-greedy':
       if exploration is None:
         exploration = 0.1
-      if exploration < 0 or exploration > 1:
+      if callable(exploration):
+        dummy = exploration(self.iterations)
+      else:
+        dummy = exploration
+      if dummy < 0 or dummy > 1:
         raise ValueError(
           "Invalid value {} for argument exploration. Must be in [0,1].".format(exploration)
-        )
-      if final_exploration is not None and (
-        final_exploration < 0 or final_exploration > 1
-      ):
-        raise ValueError(
-          "Invalid value {} for argument final_exploration. Must be in [0,1].".format(exploration)
         )
     elif self._exploration_mode == 'boltzmann':
       if exploration is None:
         exploration = 1.
-      if exploration <= 0:
+      if callable(exploration):
+        dummy = exploration(self.iterations)
+      else:
+        dummy = exploration
+      if dummy <= 0:
         raise ValueError(
           "Invalid value {} for argument exploration. Must be greater than 0.".format(exploration)
-        )
-      if final_exploration is not None and final_exploration <= 0:
-        raise ValueError(
-          "Invalid value {} for argument final_exploration. Must be greater than 0.".format(exploration)
         )
     else:
       raise ValueError("Invalid value {} for argument exploration_mode".format(exploration_mode))
 
-    self._exploration = tf.constant(exploration, dtype=tf.float32)
-    if final_exploration is None or not final_exploration_iter:
-      self._exploration_anealing = False
-    elif final_exploration_iter < 0:
-      raise ValueError(
-        "Invalid value {} for argument final_exploration_iter. Must be greater than 0.".format(final_exploration_iter)
-      )
+    if callable(exploration):
+      self._exploration = exploration
     else:
-      self._exploration_anealing = True
-      self._delta_exploration = tf.constant(
-        final_exploration - exploration, dtype=tf.float32)
-      self._final_exploration_iter = tf.constant(
-        final_exploration_iter, dtype=tf.float32)
+      self._exploration = tf.constant(exploration, dtype=tf.float32)
 
     # Define loss
     self._huber = huber_delta is not None
@@ -248,16 +237,19 @@ class DQN(tf.Module):
     self._n_actions = q_net.output_shape[-1]
     # Set prioritization
     prioritization = prioritization or 0.
-    self._prioritized = prioritization > 0.
+    self._prioritized = prioritization != 0.
     if self._prioritized:
-      priority_bias_compensation = priority_bias_compensation or 1.
-      self._bias_compensation = priority_bias_compensation > 0.
+      if priority_bias_compensation is None:
+        priority_bias_compensation = 1.
+      self._bias_compensation = priority_bias_compensation != 0.
+
     # Set replay memory
     self._replay_memory = ReplayMemory(
       state_spec,
       replay_memory_size,
       alpha=prioritization,
       beta=priority_bias_compensation,
+      iters_counter=self._optimizer.iterations,
       n_steps=n_step,
       seed=seed
     )
@@ -328,10 +320,10 @@ class DQN(tf.Module):
   @property
   def epsilon(self):
     if self._exploration_mode == 'epsilon-greedy':
-      return self.get_exploration()
+      return self.exploration
     elif self._exploration_mode == 'boltzmann':
       # TODO: Get a better estimate
-      return tf.math.exp(-1/self.get_exploration())
+      return tf.math.exp(-1/self.exploration)
     else:
       raise NotImplementedError()
 
@@ -342,20 +334,17 @@ class DQN(tf.Module):
   @property
   def replay_memory_size(self):
     return self._replay_memory.max_length
-
-  def get_exploration(self):
-    if self._exploration_anealing:
-      return self._exploration + self._delta_exploration*tf.minimum(
-        1.,
-        tf.cast(self.iterations, dtype=tf.float32)/self._final_exploration_iter
-      )
+  @property
+  def exploration(self):
+    if callable(self._exploration):
+      return self._exploration(self.iterations)
     else:
       return self._exploration
 
   def policy(self, inputs, exploration=False, values=False, output_type=tf.int64):  # pylint: disable=method-hidden
     q_values = self._q_net(inputs)
     if exploration:
-      e = self.get_exploration()
+      e = self.exploration
       if self._exploration_mode == 'epsilon-greedy':
         batch_size = tf.shape(tf.nest.flatten(inputs)[0])[0]
         actions = tf.where(
@@ -495,7 +484,7 @@ class DQN(tf.Module):
         loss = 0.5*td**2
       if self._prioritized and self._bias_compensation:
         loss = loss*weights
-      loss = tf.reduce_mean(loss)
+      loss = tf.reduce_sum(loss)
     # Compute and aply gradients on trainable weights
     variables = self._q_net.trainable_weights
     grads = tape.gradient(loss, variables)
