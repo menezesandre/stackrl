@@ -317,7 +317,7 @@ class DQN(tf.Module):
       del(self._replay_memory_iter)
     except:
       pass
-    super(DQN, self).__del__()
+    # super(DQN, self).__del__()
 
   def __call__(self, state, reward, terminal, action=None):
     if action is None:

@@ -398,10 +398,10 @@ class Training(object):
     step = self._eval_env.reset()
     values = []
     while not self._eval_reward.full:
-      a, value = self._agent.policy(step[0], values=True)
-      step = self._eval_env.step(a)
       if callable(step):
         step = step()
+      a, value = self._agent.policy(step[0], values=True)
+      step = self._eval_env.step(a)
       self._eval_reward += step
       values.append(value)
     
