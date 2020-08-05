@@ -68,19 +68,26 @@
 # nets.PseudoSiamFCN.right_layers = @right/nets.sequential
 # nets.PseudoSiamFCN.pos_layers = @pos/nets.sequential
 
+# Schedules
+
+# schedules.ExponentialDecay.initial_learning_rate = 0.001
+# schedules.ExponentialDecay.decay_steps = 100000
+# schedules.ExponentialDecay.decay_rate = 0.1
+# schedules.ExponentialDecay.staircase = False
+
+# schedules.PolynomialDecay.initial_learning_rate = 0.001
+# schedules.PolynomialDecay.decay_steps = 100000
+# schedules.PolynomialDecay.end_learning_rate = 0.0001
+# schedules.PolynomialDecay.power = 1.0
+
 # Set optimizer parameters
 
-# tf.keras.optimizers.schedules.ExponentialDecay.initial_learning_rate = 0.001
-# tf.keras.optimizers.schedules.ExponentialDecay.decay_steps = 100000
-# tf.keras.optimizers.schedules.ExponentialDecay.decay_rate = 0.1
-# tf.keras.optimizers.schedules.ExponentialDecay.staircase = False
-# tf.keras.optimizers.Adam.learning_rate = @tf.keras.optimizers.schedules.ExponentialDecay()
-
-# tf.keras.optimizers.Adam.learning_rate = 0.001
-# tf.keras.optimizers.Adam.beta_1 = 0.9
-# tf.keras.optimizers.Adam.beta_2 = 0.999
-# tf.keras.optimizers.Adam.epsilon = 0.0000001
-# tf.keras.optimizers.Adam.amsgrad = False
+# optimizers.Adam.learning_rate = 0.001
+# optimizers.Adam.learning_rate = @lr/tf.keras.optimizers.schedules.ExponentialDecay()
+# optimizers.Adam.beta_1 = 0.9
+# optimizers.Adam.beta_2 = 0.999
+# optimizers.Adam.epsilon = 0.0000001
+# optimizers.Adam.amsgrad = False
 
 # Set agent parameters
 
@@ -94,8 +101,6 @@
 # agents.DQN.discount_factor=.99
 # agents.DQN.collect_batch_size=None
 # agents.DQN.exploration=0.1
-# agents.DQN.final_exploration=None
-# agents.DQN.final_exploration_iter=None
 # agents.DQN.prioritization=None
 # agents.DQN.priority_bias_compensation=None
 # agents.DQN.double=False
