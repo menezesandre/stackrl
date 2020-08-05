@@ -122,7 +122,6 @@ def unet(
   depth=3,
   filters=64,
   out_channels=64,
-  # separable=False,
   kernel_initializer='he_uniform',
   dtype=None,
   name=None,
@@ -191,21 +190,22 @@ def unet(
       name = '{}/{}'.format(name_scope, name)
     x = k.layers.MaxPool2D(name=name)(x)
 
-  name = 'conv{}'.format(depth)
-  if name_scope:
-    name = '{}/{}'.format(name_scope, name)
-  if seed:
-    config = kernel_initializer.get_config()
-    config['seed'] = seed()
-    kernel_initializer = kernel_initializer.from_config(config)
+  for i in range(2):
+    name = 'conv{}{}'.format(depth,i)
+    if name_scope:
+      name = '{}/{}'.format(name_scope, name)
+    if seed:
+      config = kernel_initializer.get_config()
+      config['seed'] = seed()
+      kernel_initializer = kernel_initializer.from_config(config)
 
-  x = k.layers.Conv2D(
-    filters=filters*2**depth,
-    kernel_size=3, 
-    padding='same', 
-    kernel_initializer=kernel_initializer,
-    name=name,
-  )(x)
+    x = k.layers.Conv2D(
+      filters=filters*2**depth,
+      kernel_size=3, 
+      padding='same', 
+      kernel_initializer=kernel_initializer,
+      name=name,
+    )(x)
 
   for i in range(depth-1, -1, -1):
     name = 'up{}'.format(i)
@@ -265,12 +265,11 @@ def unet(
   return x
 
 @gin.configurable(module='siamrl.nets')
-def separable_unet(
+def mobile_unet(
   inputs, 
   depth=3,
   filters=64,
   out_channels=64,
-  # separable=False,
   kernel_initializer='he_uniform',
   dtype=None,
   name=None,
@@ -322,53 +321,29 @@ def separable_unet(
   x = inputs
   levels = []
 
-  for i in range(depth):
-    for j in range(2):
-      name = 'convdw{}{}'.format(i,j)
-      if name_scope:
-        name = '{}/{}'.format(name_scope, name)
-
-      if seed:
-        config = kernel_initializer.get_config()
-        config['seed'] = seed()
-        kernel_initializer = kernel_initializer.from_config(config)
-
-      if i==0 and j==0:
-        # First convolutional isn't separable
-        x = k.layers.Conv2D(
-          filters=filters, 
-          kernel_size=3, 
-          padding='same', 
-          kernel_initializer=kernel_initializer,
-          name=name,
-        )(x)
-      else:
-        x = k.layers.SeparableConv2D(
-          filters=filters*2**i, 
-          kernel_size=3, 
-          padding='same', 
-          depthwise_initializer=kernel_initializer,
-          pointwise_initializer=kernel_initializer,
-          name=name,
-        )(x)
-    
-    levels.append(x)
-    
-    name = 'down{}'.format(i)
-    if name_scope:
-      name = '{}/{}'.format(name_scope, name)
-    x = k.layers.MaxPool2D(name=name)(x)
-
-  name = 'conv{}'.format(depth)
+  name = 'convdw00'
   if name_scope:
     name = '{}/{}'.format(name_scope, name)
   if seed:
     config = kernel_initializer.get_config()
     config['seed'] = seed()
     kernel_initializer = kernel_initializer.from_config(config)
-
+  x = k.layers.Conv2D(
+    filters=filters//2,
+    kernel_size=3, 
+    padding='same', 
+    kernel_initializer=kernel_initializer,
+    name=name,
+  )(x)
+  name = 'convdw01'
+  if name_scope:
+    name = '{}/{}'.format(name_scope, name)
+  if seed:
+    config = kernel_initializer.get_config()
+    config['seed'] = seed()
+    kernel_initializer = kernel_initializer.from_config(config)
   x = k.layers.SeparableConv2D(
-    filters=filters*2**depth,
+    filters=filters, 
     kernel_size=3, 
     padding='same', 
     depthwise_initializer=kernel_initializer,
@@ -376,6 +351,43 @@ def separable_unet(
     name=name,
   )(x)
 
+
+  for i in range(1, depth+1):
+    levels.append(x)
+
+    name = 'convdw{}0'.format(i)
+    if name_scope:
+      name = '{}/{}'.format(name_scope, name)
+    if seed:
+      config = kernel_initializer.get_config()
+      config['seed'] = seed()
+      kernel_initializer = kernel_initializer.from_config(config)
+    x = k.layers.SeparableConv2D(
+      filters=filters*2**i, 
+      kernel_size=3, 
+      strides=2,
+      padding='same', 
+      depthwise_initializer=kernel_initializer,
+      pointwise_initializer=kernel_initializer,
+      name=name,
+    )(x)
+
+    name = 'convdw{}1'.format(i)
+    if name_scope:
+      name = '{}/{}'.format(name_scope, name)
+    if seed:
+      config = kernel_initializer.get_config()
+      config['seed'] = seed()
+      kernel_initializer = kernel_initializer.from_config(config)
+    x = k.layers.SeparableConv2D(
+      filters=filters*2**i, 
+      kernel_size=3, 
+      padding='same', 
+      depthwise_initializer=kernel_initializer,
+      pointwise_initializer=kernel_initializer,
+      name=name,
+    )(x)
+    
   for i in range(depth-1, -1, -1):
     name = 'up{}0'.format(i)
     if name_scope:
