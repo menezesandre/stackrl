@@ -183,7 +183,7 @@ def generate(
       logf = open(log_name, 'a')
     else:
       logf = open(log_name, 'w')
-      logf.write('Name,Volume,Rectangularity,AspectRatio\n')
+      logf.write('Name,Volume,Rectangularity,AspectRatio,NumVertices\n')
   else:
     logf = None
 
@@ -231,11 +231,12 @@ def generate(
     # Log shape metrics
     if logf is not None:
       extents = mesh.bounding_box_oriented.extents
-      logf.write('{},{},{},{}\n'.format(
+      logf.write('{},{},{},{},{}\n'.format(
         name_i,
         mesh.volume,
         mesh.volume/mesh.bounding_box_oriented.volume,
         max(extents)/min(extents),
+        len(mesh.vertices),
       ))
 
     # Export mesh to .obj file
