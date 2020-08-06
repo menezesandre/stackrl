@@ -121,7 +121,7 @@ def unet(
   inputs, 
   depth=3,
   filters=64,
-  out_channels=64,
+  out_channels=None,
   kernel_initializer='he_uniform',
   dtype=None,
   name=None,
@@ -254,13 +254,14 @@ def unet(
     config = kernel_initializer.get_config()
     config['seed'] = seed()
     kernel_initializer = kernel_initializer.from_config(config)
-
-  x = k.layers.Conv2D(
-    filters=out_channels,
-    kernel_size=1, 
-    kernel_initializer=kernel_initializer,
-    name=name,
-  )(x)
+  
+  if out_channels is not None:
+    x = k.layers.Conv2D(
+      filters=out_channels,
+      kernel_size=1, 
+      kernel_initializer=kernel_initializer,
+      name=name,
+    )(x)
   
   return x
 
@@ -269,7 +270,7 @@ def mobile_unet(
   inputs, 
   depth=3,
   filters=64,
-  out_channels=64,
+  out_channels=None,
   kernel_initializer='he_uniform',
   dtype=None,
   name=None,
@@ -443,12 +444,13 @@ def mobile_unet(
     config['seed'] = seed()
     kernel_initializer = kernel_initializer.from_config(config)
 
-  x = k.layers.Conv2D(
-    filters=out_channels,
-    kernel_size=1, 
-    kernel_initializer=kernel_initializer,
-    name=name,
-  )(x)
+  if out_channels:
+    x = k.layers.Conv2D(
+      filters=out_channels,
+      kernel_size=1, 
+      kernel_initializer=kernel_initializer,
+      name=name,
+    )(x)
   
   return x
 

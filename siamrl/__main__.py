@@ -208,7 +208,7 @@ def generate(args):
         header, 
         np.loadtxt(fname, delimiter=',', skiprows=1, unpack=True)
       ):
-        if k != 'Name':
+        if k not in ['Name', 'NumVertices']:
           data[k]['mean'].append(v.mean())
           data[k]['std'].append(v.std())
           data[k]['min'].append(v.min())
@@ -371,7 +371,7 @@ parser_generate.add_argument('--extents', nargs=3, type=float,
   help='ratios of the extents of the box that originates the models')
 parser_generate.add_argument('--subdivisions', type=int, default=3,
   help='number of subdivisions to apply to the box (each subdivision replaces a face by four smaller faces)')
-parser_generate.add_argument('-i', '--irregularity', nargs='?', type=float, 
+parser_generate.add_argument('-i', '--irregularity', nargs='+', type=float, 
   help='values for the irregularity of the models')
 parser_generate.add_argument('--irregularity-range', type=range_type, 
   metavar='START:STOP:STEP', help='range of values for the irregularity of the models')
