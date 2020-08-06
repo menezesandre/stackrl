@@ -6,16 +6,22 @@ import gin
 import tensorflow as tf
 from tensorflow import keras as k
 
-def correlation(*inputs, dtype=None):
+@gin.configurable(module='siamrl.nets')
+def correlation(in0, in1, parallel_iterations=None):
   """Aplies the correlation layer to inputs tensors"""
-  assert len(inputs) == 2, "Correlation layer must have two input tensors."
 
   def fn(inputs):
     x = tf.nn.conv2d(tf.expand_dims(inputs[0], 0), tf.expand_dims(inputs[1], -1), 
       strides=1, padding='VALID')
     return tf.squeeze(x, axis=0)
   
-  return k.layers.Lambda(lambda x: tf.map_fn(fn, x, dtype=inputs[0].dtype))(inputs)
+  return k.layers.Lambda(lambda inputs: tf.map_fn(
+    fn=fn, 
+    elems=inputs, 
+    parallel_iterations=parallel_iterations,
+    fn_output_signature=in0.dtype,
+  )
+  )((in0,in1))
 
 @gin.configurable(module='siamrl.nets')
 def sequential(
