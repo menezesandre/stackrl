@@ -9,8 +9,6 @@ from math import inf
 class ReplayMemory(tf.Module):
   """Memory for experience replay, supporting prioritized experience 
   replay."""
-  # Small constant to prevent sample probability from becoming zero.
-  epsilon = 1e-9
   def __init__(
     self,
     state_spec,
@@ -19,6 +17,7 @@ class ReplayMemory(tf.Module):
     beta=None,
     iters_counter=None,
     n_steps=None,
+    epsilon=1e-6,
     seed=None,
     name='ReplayMemory'
   ):
@@ -42,6 +41,7 @@ class ReplayMemory(tf.Module):
       n_steps: number of steps advanced in a transition returned from 
         sample (i.e. next_state is this number of steps ahead of state). 
         If None, defaults to 1.
+      epsilon: small constant to prevent sample probability from becoming zero.
       seed: to be used as local seed for minibatch sampling.
       name: name of this module.
     """
@@ -84,6 +84,10 @@ class ReplayMemory(tf.Module):
       )
       # Assert memory is large enough
       assert self._max_length > self._n_steps
+      # Set epsilon
+      if epsilon <= 0:
+        raise ValueError("epsilon must be greater than 0")
+      self.epsilon = tf.constant(epsilon, dtype=tf.float32)
       # Set local seed for random sampling
       self._seed = seed
       # Set storage
