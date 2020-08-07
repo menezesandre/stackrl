@@ -6,6 +6,17 @@ import gin
 import tensorflow as tf
 from tensorflow import keras as k
 
+def kernel_initializer_generator(kernel_initializer=None, seed=None):
+  """Generates a sequence of kernel initializers from seed. Uses he_uniform by default."""
+  r = random.Random(seed)
+  kernel_initializer = k.initializers.get(
+    kernel_initializer or 'he_uniform'
+  )
+  config = kernel_initializer.get_config()
+  while True:
+    config['seed'] = r.randint(0,2**32-1)
+    yield kernel_initializer.from_config(config)
+
 @gin.configurable(module='siamrl.nets')
 def correlation(in0, in1, parallel_iterations=None):
   """Aplies the correlation layer to inputs tensors"""
@@ -84,19 +95,18 @@ def sequential(
   name_scope = name
   if name_scope:
     name_counts = collections.defaultdict(lambda: 0)
-  
-  if seed is not None and kernel_initializer:
-    _random = random.Random(seed)
-    seed = lambda: _random.randint(0,2**32-1)
-    kernel_initializer = k.initializers.get(kernel_initializer)
+      
+
+  kernel_initializer = kernel_initializer_generator(
+    kernel_initializer=kernel_initializer,
+    seed=seed,
+  )
 
   x = inputs
   for layer,kwargs in layers:
     # Set layer name
-    if 'name' in kwargs:
-      name = kwargs.pop('name')
-    else:
-      name = None
+    name = kwargs.get('name', None)
+
     if name_scope:
       name = name or layer.__name__.lower()
       nid = name_counts[name]
@@ -109,11 +119,7 @@ def sequential(
       args,_,_,_ = inspect.getargspec(layer)
       for kw in ['kernel_initializer','depthwise_initializer','pointwise_initializer']:
         if kw in args and kw not in kwargs:
-          if seed:
-            config = kernel_initializer.get_config()
-            config['seed'] = seed()
-            kernel_initializer = kernel_initializer.from_config(config)
-          kwargs[kw] = kernel_initializer
+          kwargs[kw] = next(kernel_initializer)
 
     x = layer(
       **kwargs, 
@@ -139,7 +145,9 @@ def unet(
     depth: number of levels.
     filters: number of filters of the first level (each level doubles
       the number of filters of the previous one).
-    out_channels: number of channels in the output.
+    out_channels: number of channels in the output. If provided, a
+      1x1 convolution with this number of filters is aplied to the 
+      output. If None, number of output channels is the same as filters.
     kernel_initializer: String identifier of the kernel initializer to
       be used in all layers that have kernels. Any 'kernel_initializer'
       argument provided in the layers' kwargs is not overwriten by this
@@ -162,111 +170,67 @@ def unet(
   """
 
   name_scope = name
-  
-  if seed is not None and kernel_initializer:
-    _random = random.Random(seed)
-    seed = lambda: _random.randint(0,2**32-1)
-    kernel_initializer = k.initializers.get(kernel_initializer)
+  if name_scope:
+    name = lambda n: '{}/{}'.format(name_scope, n)
+  else:
+    name = lambda n: n
+  kernel_initializer = kernel_initializer_generator(
+    kernel_initializer=kernel_initializer,
+    seed=seed,
+  )
 
   x = inputs
   levels = []
   for i in range(depth):
     for j in range(2):
-      name = 'convdw{}{}'.format(i,j)
-      if name_scope:
-        name = '{}/{}'.format(name_scope, name)
-
-      if seed:
-        config = kernel_initializer.get_config()
-        config['seed'] = seed()
-        kernel_initializer = kernel_initializer.from_config(config)
-
       x = k.layers.Conv2D(
         filters=filters*2**i, 
         kernel_size=3, 
         padding='same', 
-        kernel_initializer=kernel_initializer,
-        name=name,
+        kernel_initializer=next(kernel_initializer),
+        name=name('convdw{}{}'.format(i,j)),
       )(x)
     
     levels.append(x)
     
-    name = 'down{}'.format(i)
-    if name_scope:
-      name = '{}/{}'.format(name_scope, name)
-    x = k.layers.MaxPool2D(name=name)(x)
+    x = k.layers.MaxPool2D(name=name('down{}'.format(i)))(x)
 
   for i in range(2):
-    name = 'conv{}{}'.format(depth,i)
-    if name_scope:
-      name = '{}/{}'.format(name_scope, name)
-    if seed:
-      config = kernel_initializer.get_config()
-      config['seed'] = seed()
-      kernel_initializer = kernel_initializer.from_config(config)
-
     x = k.layers.Conv2D(
       filters=filters*2**depth,
       kernel_size=3, 
       padding='same', 
-      kernel_initializer=kernel_initializer,
-      name=name,
+      kernel_initializer=next(kernel_initializer),
+      name=name('conv{}{}'.format(depth,i)),
     )(x)
 
   for i in range(depth-1, -1, -1):
-    name = 'up{}'.format(i)
-    if name_scope:
-      name = '{}/{}'.format(name_scope, name)
-    if seed:
-      config = kernel_initializer.get_config()
-      config['seed'] = seed()
-      kernel_initializer = kernel_initializer.from_config(config)
     x = k.layers.Conv2DTranspose(
       filters=filters*2**i,
-      kernel_size=3,
+      kernel_size=2,
       strides=2,
       padding='same',
-      kernel_initializer=kernel_initializer,
-      name=name,
+      kernel_initializer=next(kernel_initializer),
+      name=name('up{}'.format(i)),
     )(x)
 
-    name = 'concat{}'.format(i)
-    if name_scope:
-      name = '{}/{}'.format(name_scope, name)
-
-    x = k.layers.Concatenate(name=name)([x, levels.pop()])
+    x = k.layers.Concatenate(name=name('concat{}'.format(i)))([x, levels.pop()])
 
     for j in range(2):
-      name = 'convuw{}{}'.format(i,j)
-      if name_scope:
-        name = '{}/{}'.format(name_scope, name)
-      if seed:
-        config = kernel_initializer.get_config()
-        config['seed'] = seed()
-        kernel_initializer = kernel_initializer.from_config(config)
-
       x = k.layers.Conv2D(
         filters=filters*2**i, 
         kernel_size=3, 
         padding='same', 
-        kernel_initializer=kernel_initializer,
-        name=name,
+        kernel_initializer=next(kernel_initializer),
+        name=name('convuw{}{}'.format(i,j)),
       )(x)
-
-  name = 'convout'
-  if name_scope:
-    name = '{}/{}'.format(name_scope, name)
-  if seed:
-    config = kernel_initializer.get_config()
-    config['seed'] = seed()
-    kernel_initializer = kernel_initializer.from_config(config)
   
   if out_channels is not None:
     x = k.layers.Conv2D(
       filters=out_channels,
       kernel_size=1, 
-      kernel_initializer=kernel_initializer,
-      name=name,
+      kernel_initializer=next(kernel_initializer),
+      name=name('convout'),
     )(x)
   
   return x
@@ -311,151 +275,87 @@ def mobile_unet(
   """
 
   name_scope = name
-  
-  if seed is not None and kernel_initializer:
-    _random = random.Random(seed)
-    seed = lambda: _random.randint(0,2**32-1)
-    kernel_initializer = k.initializers.get(kernel_initializer)
-
-  name = 'convin'
   if name_scope:
-    name = '{}/{}'.format(name_scope, name)
-  if seed:
-    config = kernel_initializer.get_config()
-    config['seed'] = seed()
-    kernel_initializer = kernel_initializer.from_config(config)
+    name = lambda n: '{}/{}'.format(name_scope, n)
+  else:
+    name = lambda n: n
+  kernel_initializer = kernel_initializer_generator(
+    kernel_initializer=kernel_initializer,
+    seed=seed,
+  )
 
   x = inputs
   levels = []
 
-  name = 'convdw00'
-  if name_scope:
-    name = '{}/{}'.format(name_scope, name)
-  if seed:
-    config = kernel_initializer.get_config()
-    config['seed'] = seed()
-    kernel_initializer = kernel_initializer.from_config(config)
   x = k.layers.Conv2D(
     filters=filters//2,
     kernel_size=3, 
     padding='same', 
-    kernel_initializer=kernel_initializer,
-    name=name,
+    kernel_initializer=next(kernel_initializer),
+    name=name('convdw00'),
   )(x)
-  name = 'convdw01'
-  if name_scope:
-    name = '{}/{}'.format(name_scope, name)
-  if seed:
-    config = kernel_initializer.get_config()
-    config['seed'] = seed()
-    kernel_initializer = kernel_initializer.from_config(config)
+
   x = k.layers.SeparableConv2D(
     filters=filters, 
     kernel_size=3, 
     padding='same', 
-    depthwise_initializer=kernel_initializer,
-    pointwise_initializer=kernel_initializer,
-    name=name,
+    depthwise_initializer=next(kernel_initializer),
+    pointwise_initializer=next(kernel_initializer),
+    name=name('convdw01'),
   )(x)
-
 
   for i in range(1, depth+1):
     levels.append(x)
 
-    name = 'convdw{}0'.format(i)
-    if name_scope:
-      name = '{}/{}'.format(name_scope, name)
-    if seed:
-      config = kernel_initializer.get_config()
-      config['seed'] = seed()
-      kernel_initializer = kernel_initializer.from_config(config)
     x = k.layers.SeparableConv2D(
       filters=filters*2**i, 
       kernel_size=3, 
       strides=2,
       padding='same', 
-      depthwise_initializer=kernel_initializer,
-      pointwise_initializer=kernel_initializer,
-      name=name,
+      depthwise_initializer=next(kernel_initializer),
+      pointwise_initializer=next(kernel_initializer),
+      name=name('convdw{}0'.format(i)),
     )(x)
 
-    name = 'convdw{}1'.format(i)
-    if name_scope:
-      name = '{}/{}'.format(name_scope, name)
-    if seed:
-      config = kernel_initializer.get_config()
-      config['seed'] = seed()
-      kernel_initializer = kernel_initializer.from_config(config)
     x = k.layers.SeparableConv2D(
       filters=filters*2**i, 
       kernel_size=3, 
       padding='same', 
-      depthwise_initializer=kernel_initializer,
-      pointwise_initializer=kernel_initializer,
-      name=name,
+      depthwise_initializer=next(kernel_initializer),
+      pointwise_initializer=next(kernel_initializer),
+      name=name('convdw{}1'.format(i)),
     )(x)
     
   for i in range(depth-1, -1, -1):
-    name = 'up{}0'.format(i)
-    if name_scope:
-      name = '{}/{}'.format(name_scope, name)
+    x = k.layers.UpSampling2D(interpolation='bilinear', name=name('up{}0'.format(i)))(x)
 
-    x = k.layers.UpSampling2D(interpolation='bilinear')(x)
-
-    name = 'up{}1'.format(i)
-    if name_scope:
-      name = '{}/{}'.format(name_scope, name)
-    if seed:
-      config = kernel_initializer.get_config()
-      config['seed'] = seed()
-      kernel_initializer = kernel_initializer.from_config(config)
     x = k.layers.SeparableConv2D(
       filters=filters*2**i,
       kernel_size=3,
       padding='same',
-      depthwise_initializer=kernel_initializer,
-      pointwise_initializer=kernel_initializer,
-      name=name,
+      depthwise_initializer=next(kernel_initializer),
+      pointwise_initializer=next(kernel_initializer),
+      name=name('up{}1'.format(i)),
     )(x)
 
-    name = 'concat{}'.format(i)
-    if name_scope:
-      name = '{}/{}'.format(name_scope, name)
-
-    x = k.layers.Concatenate(name=name)([x, levels.pop()])
+    x = k.layers.Concatenate(name=name('concat{}'.format(i)))([x, levels.pop()])
 
     for j in range(2):
-      name = 'convuw{}{}'.format(i,j)
-      if name_scope:
-        name = '{}/{}'.format(name_scope, name)
-      if seed:
-        config = kernel_initializer.get_config()
-        config['seed'] = seed()
-        kernel_initializer = kernel_initializer.from_config(config)
-
       x = k.layers.SeparableConv2D(
         filters=filters*2**i, 
         kernel_size=3, 
         padding='same', 
-        depthwise_initializer=kernel_initializer,
-        pointwise_initializer=kernel_initializer,
-        name=name,
+        depthwise_initializer=next(kernel_initializer),
+        pointwise_initializer=next(kernel_initializer),
+        name=name('convuw{}{}'.format(i,j)),
       )(x)
-
-  name = 'convout'
-  if name_scope:
-    name = '{}/{}'.format(name_scope, name)
-  if seed:
-    config = kernel_initializer.get_config()
-    config['seed'] = seed()
-    kernel_initializer = kernel_initializer.from_config(config)
 
   if out_channels:
     x = k.layers.Conv2D(
       filters=out_channels,
       kernel_size=1, 
-      kernel_initializer=kernel_initializer,
-      name=name,
+      kernel_initializer=next(kernel_initializer),
+      name=name('convout'),
     )(x)
   
   return x

@@ -232,8 +232,10 @@ class ReplayMemory(tf.Module):
     # Get actions
     actions = self._actions.sparse_read(indexes)
 
-    next_indexes = (indexes + self._n_steps) % self._max_length \
-      + indexes // self._max_length
+    next_indexes = (
+      (indexes + self._n_steps) % self._max_length + 
+      indexes // self._max_length
+    )
     # Get next states
     next_states = tf.nest.pack_sequence_as(
       self._state_spec,

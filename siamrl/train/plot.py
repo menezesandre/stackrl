@@ -288,7 +288,7 @@ def plot_eval(path, value=False, baselines=['random', 'ccoeff'], **kwargs):
     fname = os.path.join(path, 'eval.csv')
     split = os.path.join(path, 'curriculum.csv')
     config_file = os.path.join(path, 'config.gin')
-  print(baselines)
+
   if baselines:
     # Store current config state
     _config = gin.config._CONFIG.copy()
@@ -306,7 +306,7 @@ def plot_eval(path, value=False, baselines=['random', 'ccoeff'], **kwargs):
     except OSError:
       # If no config file was parsed, don't show baselines in plot.
       envpath = None
-    print(envpath)
+
     if envpath is not None:
       # Get full path to results file for that env
       rfname = siamrl.datapath(
