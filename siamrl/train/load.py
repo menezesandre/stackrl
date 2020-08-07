@@ -64,6 +64,8 @@ def load(
           skiprows=2,
           unpack=True,
         )[:2]
+        eiters = np.atleast_1d(eiters)
+        returns = np.atleast_1d(returns)
         wpath = os.path.join(
           path,
           'saved_weights', 

@@ -186,7 +186,8 @@ def unet(
       x = k.layers.Conv2D(
         filters=filters*2**i, 
         kernel_size=3, 
-        padding='same', 
+        padding='same',
+        activation='relu',
         kernel_initializer=next(kernel_initializer),
         name=name('convdw{}{}'.format(i,j)),
       )(x)
@@ -200,6 +201,7 @@ def unet(
       filters=filters*2**depth,
       kernel_size=3, 
       padding='same', 
+      activation='relu',
       kernel_initializer=next(kernel_initializer),
       name=name('conv{}{}'.format(depth,i)),
     )(x)
@@ -210,6 +212,7 @@ def unet(
       kernel_size=2,
       strides=2,
       padding='same',
+      activation='relu',
       kernel_initializer=next(kernel_initializer),
       name=name('up{}'.format(i)),
     )(x)
@@ -221,6 +224,7 @@ def unet(
         filters=filters*2**i, 
         kernel_size=3, 
         padding='same', 
+        activation='relu',
         kernel_initializer=next(kernel_initializer),
         name=name('convuw{}{}'.format(i,j)),
       )(x)
@@ -229,6 +233,7 @@ def unet(
     x = k.layers.Conv2D(
       filters=out_channels,
       kernel_size=1, 
+      activation='relu',
       kernel_initializer=next(kernel_initializer),
       name=name('convout'),
     )(x)
@@ -291,6 +296,7 @@ def mobile_unet(
     filters=filters//2,
     kernel_size=3, 
     padding='same', 
+    activation='relu',
     kernel_initializer=next(kernel_initializer),
     name=name('convdw00'),
   )(x)
@@ -299,6 +305,7 @@ def mobile_unet(
     filters=filters, 
     kernel_size=3, 
     padding='same', 
+    activation='relu',
     depthwise_initializer=next(kernel_initializer),
     pointwise_initializer=next(kernel_initializer),
     name=name('convdw01'),
@@ -312,6 +319,7 @@ def mobile_unet(
       kernel_size=3, 
       strides=2,
       padding='same', 
+      activation='relu',
       depthwise_initializer=next(kernel_initializer),
       pointwise_initializer=next(kernel_initializer),
       name=name('convdw{}0'.format(i)),
@@ -321,6 +329,7 @@ def mobile_unet(
       filters=filters*2**i, 
       kernel_size=3, 
       padding='same', 
+      activation='relu',
       depthwise_initializer=next(kernel_initializer),
       pointwise_initializer=next(kernel_initializer),
       name=name('convdw{}1'.format(i)),
@@ -333,6 +342,7 @@ def mobile_unet(
       filters=filters*2**i,
       kernel_size=3,
       padding='same',
+      activation='relu',
       depthwise_initializer=next(kernel_initializer),
       pointwise_initializer=next(kernel_initializer),
       name=name('up{}1'.format(i)),
@@ -345,6 +355,7 @@ def mobile_unet(
         filters=filters*2**i, 
         kernel_size=3, 
         padding='same', 
+        activation='relu',
         depthwise_initializer=next(kernel_initializer),
         pointwise_initializer=next(kernel_initializer),
         name=name('convuw{}{}'.format(i,j)),
@@ -354,6 +365,7 @@ def mobile_unet(
     x = k.layers.Conv2D(
       filters=out_channels,
       kernel_size=1, 
+      activation='relu',
       kernel_initializer=next(kernel_initializer),
       name=name('convout'),
     )(x)
