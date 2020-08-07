@@ -17,7 +17,7 @@ class ReplayMemory(tf.Module):
     beta=None,
     iters_counter=None,
     n_steps=None,
-    epsilon=1e-6,
+    epsilon=1e-3,
     seed=None,
     name='ReplayMemory'
   ):
