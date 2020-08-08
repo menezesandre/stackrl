@@ -7,10 +7,10 @@ import tensorflow as tf
 from tensorflow import keras as k
 
 def kernel_initializer_generator(kernel_initializer=None, seed=None):
-  """Generates a sequence of kernel initializers from seed. Uses he_uniform by default."""
+  """Generates a sequence of kernel initializers from seed. Uses he_normal by default."""
   r = random.Random(seed)
   kernel_initializer = k.initializers.get(
-    kernel_initializer or 'he_uniform'
+    kernel_initializer or 'he_normal'
   )
   config = kernel_initializer.get_config()
   while True:
@@ -38,7 +38,7 @@ def correlation(in0, in1, parallel_iterations=None):
 def sequential(
   inputs, 
   layers, 
-  kernel_initializer='he_uniform',
+  kernel_initializer=None,
   dtype=None,
   name=None,
   seed=None,
@@ -134,7 +134,8 @@ def unet(
   depth=3,
   filters=64,
   out_channels=None,
-  kernel_initializer='he_uniform',
+  out_activation=None,
+  kernel_initializer=None,
   dtype=None,
   name=None,
   seed=None,
@@ -233,7 +234,7 @@ def unet(
     x = k.layers.Conv2D(
       filters=out_channels,
       kernel_size=1, 
-      activation='relu',
+      activation=out_activation,
       kernel_initializer=next(kernel_initializer),
       name=name('convout'),
     )(x)
@@ -246,7 +247,8 @@ def mobile_unet(
   depth=3,
   filters=64,
   out_channels=None,
-  kernel_initializer='he_uniform',
+  out_activation=None,
+  kernel_initializer=None,
   dtype=None,
   name=None,
   seed=None,
@@ -365,7 +367,7 @@ def mobile_unet(
     x = k.layers.Conv2D(
       filters=out_channels,
       kernel_size=1, 
-      activation='relu',
+      activation=out_activation,
       kernel_initializer=next(kernel_initializer),
       name=name('convout'),
     )(x)
@@ -374,7 +376,7 @@ def mobile_unet(
 
 def default_branch_layers(
   inputs, 
-  kernel_initializer='he_uniform', 
+  kernel_initializer=None,
   **kwargs
 ):
   """Aplies the default sequence of layers for the branches of the 
@@ -402,9 +404,12 @@ def default_branch_layers(
     **kwargs,
   )
 
-def default_pos_layers(
-  inputs, 
-  kernel_initializer='he_uniform',
+@gin.configurable(module='siamrl.nets')
+def pos_layers(
+  inputs,
+  filters=32,
+  depth=2,
+  kernel_initializer=None,
   **kwargs,
 ):
   """Aplies the default sequence of layers after the correlation for the
@@ -417,16 +422,19 @@ def default_pos_layers(
   return sequential(
     inputs=inputs, 
     layers=[
-      (k.layers.Conv2D, 
-        {'filters':32, 'kernel_size':3, 'activation':'relu', 
-        'padding':'same'}),
-      (k.layers.SeparableConv2D, 
-        {'filters':32, 'kernel_size':3, 'activation':'relu', 
-        'padding':'same'}),
-      (k.layers.SeparableConv2D, 
-        {'filters':1, 'kernel_size':3, 
-        'padding':'same'}),
-      (k.layers.Flatten, {})
+      (k.layers.Conv2D, {
+        'filters':filters,
+        'kernel_size':3, 
+        'activation':'relu', 
+        'padding':'same'
+      }),
+    ]*depth + [
+      (k.layers.SeparableConv2D, {
+        'filters':1, 
+        'kernel_size':1, 
+        'padding':'same'
+      }),
+      (k.layers.Flatten, {}),
     ],
     kernel_initializer=kernel_initializer,
     **kwargs

@@ -32,45 +32,26 @@
 
 # Set network parameters
 
-# left/nets.sequential.layers = [
-#   (@tf.keras.layers.Conv2D,
-#     {'filters':32, 'kernel_size':8, 'strides':4, 'activation':'relu', 
-#     'padding':'same'}),
-#   (@tf.keras.layers.Conv2D,
-#     {'filters':64, 'kernel_size':4, 'dilation_rate':2, 
-#     'activation':'relu', 'padding':'same'}),
-#   (@tf.keras.layers.Conv2D,
-#     {'filters':64, 'kernel_size':3, 'activation':'relu', 
-#     'padding':'same'}),
-#   (@tf.keras.layers.UpSampling2D, {'size':4, 'interpolation':'bilinear'})
-# ]
-# right/nets.sequential.layers = [
-#   (@tf.keras.layers.Conv2D,
-#     {'filters':32, 'kernel_size':8, 'strides':4, 'activation':'relu', 
-#     'padding':'same'}),
-#   (@tf.keras.layers.Conv2D,
-#     {'filters':64, 'kernel_size':4, 'dilation_rate':2, 
-#     'activation':'relu', 'padding':'same'}),
-#   (@tf.keras.layers.Conv2D,
-#     {'filters':64, 'kernel_size':3, 'activation':'relu', 
-#     'padding':'same'}),
-#   (@tf.keras.layers.UpSampling2D, {'size':4, 'interpolation':'bilinear'})
-# ]
+# left/nets.unet.filters=32
+# left/nets.unet.depth=3
+# left/nets.unet.out_channels=None
+# left/nets.unet.out_activation=None
+# left/nets.unet.kernel_initializer=None
+
+# right/nets.unet.filters=32
+# right/nets.unet.depth=3
+# right/nets.unet.out_channels=None
+# right/nets.unet.out_activation=None
+# right/nets.unet.kernel_initializer=None
 
 # nets.correlation.parallel_iterations=None
 
-# pos/nets.sequential.layers = [
-#   (@tf.keras.layers.Conv2D, 
-#     {'filters':160, 'kernel_size':13, 'activation':'relu', 
-#     'padding':'same'}),
-#   (@tf.keras.layers.Conv2D,
-#     {'filters':1, 'kernel_size':1, 'padding':'same'}),
-#   (@tf.keras.layers.Flatten, {})
-# ]  
+# nets.pos_layers.filters=32
+# nets.pos_layers.depth=2
 
 # nets.PseudoSiamFCN.left_layers = @left/nets.sequential
 # nets.PseudoSiamFCN.right_layers = @right/nets.sequential
-# nets.PseudoSiamFCN.pos_layers = @pos/nets.sequential
+# nets.PseudoSiamFCN.pos_layers = @nets.pos_layers
 
 # Schedules
 

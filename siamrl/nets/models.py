@@ -14,9 +14,9 @@ class PseudoSiamFCN(tf.keras.Model):
   def __init__(
     self,
     input_spec,
-    left_layers=layers.default_branch_layers,
+    left_layers=layers.unet,
     right_layers=None,
-    pos_layers=layers.default_pos_layers,
+    pos_layers=layers.pos_layers,
     seed=None,
     name='PseudoSiamFCN'
   ):
