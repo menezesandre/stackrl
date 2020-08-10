@@ -542,7 +542,7 @@ def analyse(
             plt.close()
       del(actions, actions_distance)
 
-      # Correlation between value functions <--- Killed here
+      # Correlation between value functions
       corrcoefs = np.corrcoef(values.reshape((num_policies, -1)))
       im,_ = heatmap.heatmap(corrcoefs, keys, keys, cbarlabel='Correlation coefficients')
       heatmap.annotate_heatmap(im)
