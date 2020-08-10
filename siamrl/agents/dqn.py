@@ -47,6 +47,7 @@ class DQN(tf.Module):
     replay_memory_size=100000,
     prefetch=None,
     target_update_period=10000,
+    reward_scale=None,
     discount_factor=.99,
     collect_batch_size=None,
     exploration_mode=None,
@@ -61,7 +62,7 @@ class DQN(tf.Module):
   ):
     """
     Args:
-      q_net: Q network. Instance of a keras Model. Observation and
+      q_net: Q-network. Instance of a keras Model. Observation and
         action spec are infered from this model's input and output.
       optimizer: for the q_net training. Either a string identifier
         or an instance of a keras Optimizer.
@@ -81,7 +82,10 @@ class DQN(tf.Module):
         with priorities from up to this number of iterations earlier.
       target_update_period: number of iterations between target 
         network updates.
-      gamma: discount factor for delayed rewards. Scalar between 0 and 1.
+      reward_scale: scaling factor to be aplied to the rewards when fitting
+        the Q-network. 
+      discount_factor: discount factor for delayed rewards. Scalar between 
+        0 and 1.
       collect_batch_size: expected batch size of the observations 
         received in collect (i.e. from parallel environments). If None, 
         defaults to 1.
@@ -224,6 +228,12 @@ class DQN(tf.Module):
     else:
       # Discount for next step's value
       self._gamma = tf.constant(discount_factor, dtype=tf.float32)
+    # Set reward scaling
+    if reward_scale:
+      self._reward_scaling = True
+      self._reward_scale_factor = tf.constant(reward_scale, dtype=tf.float32)
+    else:
+      self._reward_scaling = False
     # Set collect batch size
     collect_batch_size = collect_batch_size or 1
     # Infer state spec and number of actions from the Q net
@@ -429,12 +439,8 @@ class DQN(tf.Module):
         ),
         axis=-1,
       )
-      # q_values = tf.map_fn(
-      #   lambda i: i[0][i[1]],
-      #   (q_values, actions),
-      #   dtype=q_values.dtype
-      # )
-      # Compute target Q values
+      if self._reward_scaling:
+        rewards *= self._reward_scale_factor
       if self._gamma == 0 and not self._n_step:
         target_q_values = rewards
       else:
