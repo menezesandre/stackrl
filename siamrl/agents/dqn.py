@@ -25,22 +25,12 @@ class DQN(tf.Module):
       'epsilon-greedy',
       'boltzmann',
     ],
-    'optimizers': {
-      'adadelta': k.optimizers.Adadelta,
-      'adagrad': k.optimizers.Adagrad,
-      'adam': k.optimizers.Adam,
-      'adamax': k.optimizers.Adamax,
-      'ftrl': k.optimizers.Ftrl,
-      'nadam': k.optimizers.Nadam,
-      'rmsprop': k.optimizers.RMSprop,
-      'sgd': k.optimizers.SGD
-    }
   }
 
   def __init__(
     self,
     q_net,
-    optimizer='adam',
+    optimizer=None,
     learning_rate=None,
     huber_delta=1.,
     minibatch_size=32,
@@ -64,11 +54,12 @@ class DQN(tf.Module):
     Args:
       q_net: Q-network. Instance of a keras Model. Observation and
         action spec are infered from this model's input and output.
-      optimizer: for the q_net training. Either a string identifier
-        or an instance of a keras Optimizer.
-      learning_rate: only used if optimizer is a string identifier. 
-        Either a scalar or an instance of a keras LearningRateSchedule. 
-        If None, default optimizer's learning rate is used.
+      optimizer: for the q_net training. Either a constructor or an 
+        instance of a keras Optimizer. If None, RMSProp with rho=0.95
+        and mumentum=0.95 is used.
+      learning_rate: only used if optimizer is a constructor. Either
+        a scalar or an instance of a keras LearningRateSchedule. If None,
+        0.00025 is used.
       loss: value of delta in the Huber loss to be aplied to the 
         temporal difference error. If None, MSE loss is used.
         identifier or an instance of a keras Loss.
@@ -134,26 +125,19 @@ class DQN(tf.Module):
         "Invalid type {} for argument q_net. Must be a keras Model."
       )
     # Set optimizer
+    if optimizer is None:
+      self._optimizer = tf.keras.optimizers.RMSprop(
+        learning_rate=learning_rate or 0.00025, 
+        rho=0.95, 
+        momentum=0.95
+      )
     if isinstance(optimizer, k.optimizers.Optimizer):
       self._optimizer = optimizer
-    elif isinstance(optimizer, str):
-      optimizer = optimizer.lower()
-      if optimizer in self.metadata['optimizers']:
-        optimizer = self.metadata['optimizers'][optimizer]
-        if learning_rate is None:
-          self._optimizer = optimizer()
-        else:
-          self._optimizer = optimizer(learning_rate=learning_rate)
-      else:
-        raise ValueError(
-          "Invalid value {} for argument optimizer. Must be in {}.".format(
-            optimizer,
-            list(self.metadata['optimizers'].keys())
-          )
-        )
+    elif callable(optimizer):
+      self._optimizer = optimizer(learning_rate=learning_rate or 0.00025)
     else:
       raise TypeError(
-        "Invalid type {} for argument optimizer. Must be a keras Optimizer or a str."
+        "Invalid type {} for argument optimizer. Must be a constructor or instance of a keras Optimizer."
       )
 
     # Set exploration
