@@ -90,6 +90,11 @@ class Training(object):
         self.log("Couldn't set memory growth to {} for device {}. Already initialized.".format(memory_growth, device))
 
     # Set seeder.
+    if seed is None:
+      # If seed was not provided, use the current timestamp and write it
+      # in log, to allow reproducing results of this train.
+      seed = int(datetime.now().timestamp() % 2**32)
+      self.log("Using {} as seed.".format(seed))
     _random = random.Random(seed)
     seed = lambda: _random.randint(0,2**32-1)
     # Set global seeds.
@@ -459,8 +464,9 @@ class Training(object):
 
   def log(self, line):
     """Logs line with a time stamp."""
-    line = str(datetime.now())+': '+line+'\n'
-
+    line = datetime.now().strftime(
+      '%Y-%m-%d %H:%M:%S.%f: {}\n'.format(line)
+    )
     if self._log_file is not None:
       with open(self._log_file, 'a') as f:
         f.write(line)
