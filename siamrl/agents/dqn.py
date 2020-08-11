@@ -131,7 +131,7 @@ class DQN(tf.Module):
         rho=0.95, 
         momentum=0.95
       )
-    if isinstance(optimizer, k.optimizers.Optimizer):
+    elif isinstance(optimizer, k.optimizers.Optimizer):
       self._optimizer = optimizer
     elif callable(optimizer):
       self._optimizer = optimizer(learning_rate=learning_rate or 0.00025)
