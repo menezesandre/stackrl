@@ -83,7 +83,7 @@ def lowest(observation, previous=None, limit=0, exponent=1, **kwargs):
 
   shape = np.subtract(x.shape, w.shape) + 1
   h = np.zeros(shape)
-  wbin = w > 0.
+  wbin = w > 0
 
   if previous is not None:
     # Use previous as a mask to compute only values that will be used
@@ -120,7 +120,7 @@ def closest(observation, previous=None, **kwargs):
   shape = np.subtract(x.shape, w.shape) + 1
   d = np.zeros(shape)
 
-  wbin = w > 0.
+  wbin = w > 0
   wnz = np.count_nonzero(w)
 
   if previous is not None:

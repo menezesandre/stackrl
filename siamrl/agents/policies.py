@@ -153,5 +153,5 @@ class TFWrapper(PolicyWrapper):
     return tf.map_fn(
       lambda i: tf.numpy_function(self._policy, [i], tf.int64),
       inputs,
-      dtype=tf.int64
+      fn_output_signature=tf.int64,
     )
