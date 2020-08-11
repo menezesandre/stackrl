@@ -247,8 +247,6 @@ class DQN(tf.Module):
       n_steps=n_step,
       seed=seed
     )
-    # Set minibatch size
-    # self._minibatch_size = minibatch_size
     # Get dataset iterator for the replay memory
     dataset = self._replay_memory.dataset(
       minibatch_size, 
@@ -256,8 +254,6 @@ class DQN(tf.Module):
     )
     if prefetch:
       dataset = dataset.prefetch(prefetch)
-    # with FreezeDependencies(self):
-    #   self._replay_memory_iter = iter(dataset)
     self._replay_memory_iter = self._no_dependency(iter(dataset))
 
     self._double = double
@@ -324,7 +320,6 @@ class DQN(tf.Module):
   @property
   def iterations(self):
     return self._optimizer.iterations
-
   @property
   def replay_memory_size(self):
     return self._replay_memory.max_length
