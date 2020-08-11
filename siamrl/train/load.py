@@ -43,7 +43,7 @@ def load(
     # Set observation spec
     if envs.isspace(observation_spec):
       batchwise = len(observation_spec[0].shape) == 4
-      observation_spec = envs.get_space_spec(observation_spec)
+      _observation_spec = envs.get_space_spec(observation_spec)
       py = True
     else:
       batchwise = False
@@ -88,11 +88,11 @@ def load(
         raise FileNotFoundError("Failed to find config file '{}'.".format(config_file))
       # Instantiate net with binded parameters
       with gin.config_scope('load'):
-        net = nets.PseudoSiamFCN(observation_spec)
+        net = nets.PseudoSiamFCN(_observation_spec)
       # Restore config state
       gin.config._CONFIG = _config
     else:
-      net = nets.PseudoSiamFCN(observation_spec)
+      net = nets.PseudoSiamFCN(_observation_spec)
 
     net.load_weights(os.path.join(wpath,'weights'))
     if verbose:
