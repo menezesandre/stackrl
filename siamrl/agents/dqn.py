@@ -137,7 +137,7 @@ class DQN(tf.Module):
       self._optimizer = optimizer(learning_rate=learning_rate or 0.00025)
     else:
       raise TypeError(
-        "Invalid type {} for argument optimizer. Must be a constructor or instance of a keras Optimizer."
+        "Invalid type {} for argument optimizer. Must be a constructor or instance of a keras Optimizer.".format(type(optimizer))
       )
 
     # Set exploration
