@@ -6,12 +6,13 @@ from datetime import datetime
 import time
 import os
 
+import gin
 import gym
 import numpy as np
 from scipy import signal
 
 # from siamrl import envs
-from siamrl.agents import policies
+from siamrl import agents
 
 def _apply_limit_and_exponent(inputs, **kwargs):
   limit = kwargs.get('limit', 0)
@@ -225,7 +226,8 @@ methods = {
   'gradcorr': gradcorr
 }
 
-class Baseline(policies.PyGreedy):
+@gin.configurable(module='siamrl')
+class Baseline(agents.PyGreedy):
   def __init__(
     self, 
     method='random', 
@@ -273,80 +275,3 @@ class Baseline(policies.PyGreedy):
       batched=batched,
       batchwise=batchwise,
     )
-
-# def test(env_id, method=None, num_steps=1024, verbose=False, visualize=False, gui=False, save_results=None,sleep=0.5, seed=11):
-#   if save_results is None:
-#     save_results = method is None
-
-#   env = gym.make(env_id, use_gui=gui, seed=seed)
-#   batched = len(env.observation_space[0].shape) == 4
-
-#   if method:
-#     if isinstance(method, str):
-#       method = method.split(',')
-#     elif not hasattr(method, '__len__'):
-#       method = (method,)
-#     policies = {str(m):Baseline(method=m, batched=batched, batchwise=batched) for m in method}
-#   else:
-#     policies = {m:Baseline(method=m, batched=batched, batchwise=batched) for m in methods}
-#     policies['random (anywhere)'] = lambda o: env.action_space.sample()
-
-#   results = {} if save_results else None
-
-#   sleep = 1. if sleep > 1 else sleep
-#   sleep = 0. if sleep < 0 else sleep
-
-#   for name, policy in policies.items():
-#     if not env:
-#       env = gym.make(env_id, use_gui=gui, seed=seed)
-    
-#     tr = 0.
-#     ne = 0
-#     o = env.reset()
-
-#     if gui:
-#       import pybullet as pb
-#       pb.configureDebugVisualizer(pb.COV_ENABLE_GUI, 0)
-#       pb.resetDebugVisualizerCamera(.5, 90, -75, (0.25,0.25,0))
-#       time.sleep(5*sleep)
-    
-#     if verbose:
-#       print(name.capitalize())
-#     for _ in range(num_steps):
-#       if gui:
-#         time.sleep(sleep-(datetime.now().microsecond/1e6)%sleep)
-#       o,r,d,_=env.step(policy(o))
-#       print(r)
-#       tr+=r
-#       if d:
-#         ne+=1
-#         if verbose:
-#           print('  Current average ({}): {}'.format(
-#           ne,
-#           tr/ne
-#         ))
-#         o=env.reset()
-
-#     if results is not None:
-#       results[name]=tr/ne
-#     if verbose:
-#       print('Final average: {}'.format(tr/ne))
-#     del(env)
-#     env = None
-
-#   if results:
-#     fpath = os.path.join(
-#       os.path.dirname(__file__),
-#       '..',
-#       'data',
-#       'baselines',
-#       envs.utils.as_path(env_id),
-#     )
-#     fname = os.path.join(fpath, 'results')
-#     if not os.path.isdir(fpath):
-#       os.makedirs(fpath)
-#     with open(fname, 'w') as f:
-#       for k,v in results.items():
-#         f.write('{}:{}\n'.format(k,v))
-    
-#     return results

@@ -248,7 +248,10 @@ class Training(object):
       # Set collect policy and number of steps.
       num_steps = num_steps or self._agent.replay_memory_size
       policy = policy or (lambda o: self._env.sample())
-      if not callable(policy):
+      if callable(policy):
+        if not isinstance(policy, tf.Module):
+          policy = agents.TFWrapper(policy)
+      else:
         raise TypeError(
           "Invalid type {} for argument policy. Must be callable.".format(type(policy))
         )
