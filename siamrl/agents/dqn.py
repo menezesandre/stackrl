@@ -469,7 +469,7 @@ class DQN(tf.Module):
         loss = 0.5*td**2
       if self._prioritized and self._bias_compensation:
         loss = loss*weights
-      loss = tf.reduce_sum(loss)
+      loss = tf.reduce_mean(loss)
     # Compute and aply gradients on trainable weights
     variables = self._q_net.trainable_weights
     grads = tape.gradient(loss, variables)
