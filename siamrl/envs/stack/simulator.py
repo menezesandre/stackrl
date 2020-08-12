@@ -3,7 +3,7 @@ import functools
 import numpy as np
 import pybullet as pb
 
-MAX_STEP_TIME = 30
+MAX_STEP_TIME = 60
 
 class Simulator(object):
   def __init__(
