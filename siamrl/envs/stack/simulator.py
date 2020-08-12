@@ -3,7 +3,7 @@ import functools
 import numpy as np
 import pybullet as pb
 
-MAX_STEP_TIME = 60
+MAX_STEP_TIME = 300
 
 class Simulator(object):
   def __init__(
@@ -43,7 +43,7 @@ class Simulator(object):
     if not num_steps:
       self._velocity_threshold = velocity_threshold
 
-    self._max_step_count = MAX_STEP_TIME/time_step
+    self._max_step_count = int(MAX_STEP_TIME/time_step)
 
     self._id = -1
     self._new = None
@@ -223,7 +223,7 @@ class Simulator(object):
         steps_counter +=1
         if steps_counter > self._max_step_count:
           raise RuntimeError(
-            "Maximum number of simulator steps ({}) reached. This may be caused by incorrect behaviour due to a large value of time_step".format(self._max_step_count)
+            "Maximum number of simulator steps ({}) reached. This may be caused by incorrect behaviour due to a large time step value ({}s)".format(self._max_step_count, self._time_step)
           )
     # Store step counter before dropping object
     self._steps_counter[0] = steps_counter
@@ -240,7 +240,7 @@ class Simulator(object):
       steps_counter += 1
       if steps_counter > self._max_step_count:
         raise RuntimeError(
-          "Maximum number of simulator steps ({}) reached. This may be caused by incorrect behaviour due to a large value of time_step".format(self._max_step_count)
+          "Maximum number of simulator steps ({}) reached. This may be caused by incorrect behaviour due to a large time step ({}s)".format(self._max_step_count, self._time_step)
         )
     # Store step counter after dropping object
     self._steps_counter[1] = steps_counter - self._steps_counter[0]
