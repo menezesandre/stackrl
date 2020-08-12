@@ -184,7 +184,7 @@ class DeepQSiamFCN(tf.keras.Model):
     outputs = tf.keras.layers.Flatten()(outputs)
 
     if dueling:
-      outputs = outputs - tf.reduce_mean(outputs, axis=-1) + x0
+      outputs = outputs - tf.reduce_mean(outputs, axis=-1, keepdims=True) + x0
 
     super(DeepQSiamFCN, self).__init__(
       inputs=inputs, 
