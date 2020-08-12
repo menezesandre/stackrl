@@ -18,7 +18,7 @@ class PseudoSiamFCN(tf.keras.Model):
     right_layers=None,
     pos_layers=layers.pos_layers,
     seed=None,
-    name='PseudoSiamFCN'
+    name='PseudoSiamFCN',
   ):
     """
     Args:
@@ -90,8 +90,103 @@ class PseudoSiamFCN(tf.keras.Model):
       outputs, 
       seed=seed(),
     )
-    
+    outputs = tf.keras.layers.Flatten()(outputs)
+
     super(PseudoSiamFCN, self).__init__(
+      inputs=inputs, 
+      outputs=outputs, 
+      name=name
+    )
+
+@gin.configurable(module='siamrl.nets')
+class DeepQSiamFCN(tf.keras.Model):
+  def __init__(
+    self,
+    input_spec,
+    left_filters=32,
+    left_depth=4,
+    right_filters=None,
+    right_depth=None,
+    corr_channels=None,
+    pos_filters=32,
+    pos_depth=2,
+    dueling=False,
+    dueling_avg_pool=True,
+    dueling_units=512,
+    seed=None,
+    name='DeepQSiamFCN',
+  ):
+    # Set input spec
+    try:
+      assert len(input_spec) == 2, \
+        "Argument input_spec must have two elements."
+    except TypeError:
+      raise TypeError(
+        "Invalid type {} for argument input_spec, must have len()".format(
+          type(input_spec)
+        )
+      )
+    input_spec = tuple(
+      i if isinstance(i, tf.TensorSpec) else tf.TensorSpec(shape=i) \
+        for i in input_spec
+    )
+
+    # Set input
+    inputs = tf.nest.map_structure(
+      lambda i: tf.keras.Input(i.shape.with_rank(3), dtype=i.dtype),
+      input_spec
+    )
+    x,w = tf.nest.map_structure(
+      lambda i: i if i.dtype.is_floating else i/i.dtype.max,
+      inputs
+    )
+    # Set seed
+    if seed is not None:
+      _random = random.Random(seed)
+      seed = lambda: _random.randint(0,2**32-1)
+    else:
+      seed = lambda: None
+
+    right_filters = right_filters or left_filters
+    right_depth = right_depth or max(1, left_depth-2)
+
+    if right_filters != left_filters and corr_channels is None:
+      corr_channels = min(left_filters, right_filters)
+
+    x = layers.unet(
+      x, 
+      depth=left_depth, 
+      filters=left_filters, 
+      out_channels=corr_channels,
+      double_endpoint=dueling,
+      seed=seed(),
+      name='Left',
+    )
+    w = layers.unet(
+      w, 
+      depth=right_depth, 
+      filters=right_filters, 
+      out_channels=corr_channels,
+      seed=seed(),
+      name='Right',
+    )
+    if dueling:
+      x, x0 = x
+      x0 = layers.value(x0, avg=dueling_avg_pool, units=dueling_units, seed=seed())
+
+    outputs = layers.correlation(x, w)
+    outputs = layers.pos_layers(
+      outputs,
+      filters=pos_filters,
+      depth=pos_depth,
+      seed=seed(),
+    )
+    outputs = tf.keras.layers.Flatten()(outputs)
+
+    if dueling:
+      outputs = outputs - tf.reduce_mean(outputs, axis=-1) + x0
+
+    super(DeepQSiamFCN, self).__init__(
       inputs=inputs, 
       outputs=outputs, 
       name=name

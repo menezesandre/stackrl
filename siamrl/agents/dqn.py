@@ -55,8 +55,7 @@ class DQN(tf.Module):
       q_net: Q-network. Instance of a keras Model. Observation and
         action spec are infered from this model's input and output.
       optimizer: for the q_net training. Either a constructor or an 
-        instance of a keras Optimizer. If None, RMSProp with rho=0.95
-        and mumentum=0.95 is used.
+        instance of a keras Optimizer. If None, Adam is used.
       learning_rate: only used if optimizer is a constructor. Either
         a scalar or an instance of a keras LearningRateSchedule. If None,
         0.00025 is used.
@@ -126,10 +125,8 @@ class DQN(tf.Module):
       )
     # Set optimizer
     if optimizer is None:
-      self._optimizer = tf.keras.optimizers.RMSprop(
-        learning_rate=learning_rate or 0.00025, 
-        rho=0.95, 
-        momentum=0.95
+      self._optimizer = tf.keras.optimizers.Adam(
+        learning_rate=learning_rate or 0.00025,
       )
     elif isinstance(optimizer, k.optimizers.Optimizer):
       self._optimizer = optimizer

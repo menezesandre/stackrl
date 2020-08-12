@@ -136,13 +136,14 @@ def unet(
   out_channels=None,
   out_activation=None,
   kernel_initializer=None,
+  double_endpoint=False,
   dtype=None,
   name=None,
   seed=None,
 ):
-  """Aplies a sequence of layers
+  """Aplies the layers of U-Net architecture to inputs.
   Args:
-    inputs: input tensor(s).
+    inputs: input tensor.
     depth: number of levels.
     filters: number of filters of the first level (each level doubles
       the number of filters of the previous one).
@@ -158,6 +159,9 @@ def unet(
       instance of a keras Initializer to be used in all layers. (Use the
       later with a defined seed, in combination with setting the global 
       seed, to get reproducible results.)
+    double_endpoint: if True, the return is a tuple of tensors with the
+      output of the U-Net and the and the output of the last bottom 
+      layer (before the first up-conv).
     dtype: data type of the layers. If None, default layer's dtype is 
       used.
     name: layers are instantiated with names prefixed with this name
@@ -207,6 +211,9 @@ def unet(
       name=name('conv{}{}'.format(depth,i)),
     )(x)
 
+  if double_endpoint:
+    x0 = x
+
   for i in range(depth-1, -1, -1):
     x = k.layers.Conv2DTranspose(
       filters=filters*2**i,
@@ -238,8 +245,10 @@ def unet(
       kernel_initializer=next(kernel_initializer),
       name=name('convout'),
     )(x)
-  
-  return x
+  if double_endpoint:
+    return x,x0
+  else:
+    return x
 
 @gin.configurable(module='siamrl.nets')
 def mobile_unet(
@@ -404,6 +413,19 @@ def default_branch_layers(
     **kwargs,
   )
 
+def value(inputs, avg=True, units=512, kernel_initializer=None, seed=None):
+  kernel_initializer = kernel_initializer_generator(
+    kernel_initializer=kernel_initializer,
+    seed=seed,
+  )
+
+  if avg:
+    x = k.layers.GlobalAvgPool2D()(inputs)
+  else:
+    x = k.layers.GlobalMaxPool2D()(inputs)
+  x = k.layers.Dense(units, activation='relu', kernel_initializer=next(kernel_initializer))(x)
+  return k.layers.Dense(1, kernel_initializer=next(kernel_initializer))(x)
+
 @gin.configurable(module='siamrl.nets')
 def pos_layers(
   inputs,
@@ -434,7 +456,6 @@ def pos_layers(
         'kernel_size':1, 
         'padding':'same'
       }),
-      (k.layers.Flatten, {}),
     ],
     kernel_initializer=kernel_initializer,
     **kwargs
