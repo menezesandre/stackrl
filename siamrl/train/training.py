@@ -262,14 +262,17 @@ class Training(object):
           "Invalid type {} for argument policy. Must be callable.".format(type(policy))
         )
       # Run initial collect
-      self.log('Running initial collect...')
+      self.log('Running initial collect ({} steps)...'.format(num_steps))
       step = self._env.reset()
-      for _ in range(num_steps-1):
+      for i in range(num_steps-1):
         if callable(step):
           step = step()
         a = policy(step[0])
         self._agent.observe(*step, a)
         step = self._env.step(a)
+        if i % self._log_interval == 0:
+          self.log('Collected {}/{}'.format(i, num_steps))
+
       if callable(step):
         o,r,_=step()
       else:
