@@ -243,52 +243,58 @@ class Training(object):
       policy: policy to use on the initial collect. If None, a random 
         collect is run.
     """
-    self._checkpoint.restore(self._checkpoint_manager.latest_checkpoint)
-    if self._checkpoint_manager.latest_checkpoint:
-      self.log('Starting from checkpoint.')
-    else:
-      self.log('Starting from scratch.')
-      # Evaluate the agent's policy once before training.
-      self.eval()
-      # Set collect policy and number of steps.
-      num_steps = num_steps or self._agent.replay_memory_size
-      if policy is None:
-        policy = lambda o: self._env.sample()
-      elif callable(policy):
-        if not isinstance(policy, tf.Module):
-          policy = agents.TFWrapper(policy)
+    try:
+      self._checkpoint.restore(self._checkpoint_manager.latest_checkpoint)
+      if self._checkpoint_manager.latest_checkpoint:
+        self.log('Starting from checkpoint.')
       else:
-        raise TypeError(
-          "Invalid type {} for argument policy. Must be callable.".format(type(policy))
-        )
-      # Run initial collect
-      self.log('Running initial collect ({} steps)...'.format(num_steps))
-      step = self._env.reset()
-      for i in range(num_steps-1):
-        if callable(step):
-          step = step()
-        a = policy(step[0])
-        self._agent.observe(*step, a)
-        step = self._env.step(a)
-        if i % self._log_interval == 0:
-          self.log('Collected {}/{}'.format(i, num_steps))
+        self.log('Starting from scratch.')
+        # Evaluate the agent's policy once before training.
+        self.eval()
+        # Set collect policy and number of steps.
+        num_steps = num_steps or self._agent.replay_memory_size
+        if policy is None:
+          policy = lambda o: self._env.sample()
+        elif callable(policy):
+          if not isinstance(policy, tf.Module):
+            policy = agents.TFWrapper(policy)
+        else:
+          raise TypeError(
+            "Invalid type {} for argument policy. Must be callable.".format(type(policy))
+          )
+        # Run initial collect
+        self.log('Running initial collect ({} steps)...'.format(num_steps))
+        step = self._env.reset()
+        for i in range(num_steps-1):
+          if callable(step):
+            step = step()
+          a = policy(step[0])
+          self._agent.observe(*step, a)
+          step = self._env.step(a)
+          if i % self._log_interval == 0:
+            self.log('Collected {}/{}'.format(i, num_steps))
 
-      if callable(step):
-        o,r,_=step()
-      else:
-        o,r,_=step
-      self._agent.observe(
-        o,
-        r,
-        # Set last step as terminal.
-        tf.ones((self._env.batch_size,), dtype=tf.bool),
-        # last action is repeated here but it doesn't matter as an 
-        # action from a terminal state is never used.
-        a 
-      ) 
-      self.log('Done.')
-      
-    self._initialized = True
+        if callable(step):
+          o,r,_=step()
+        else:
+          o,r,_=step
+        self._agent.observe(
+          o,
+          r,
+          # Set last step as terminal.
+          tf.ones((self._env.batch_size,), dtype=tf.bool),
+          # last action is repeated here but it doesn't matter as an 
+          # action from a terminal state is never used.
+          a 
+        ) 
+        self.log('Done.')
+    
+      self._initialized = True
+    except Exception as e:
+      # Log and reraise expception
+      self.log_exception()
+      raise e
+
 
   @gin.configurable(module='siamrl.Training')
   def run(

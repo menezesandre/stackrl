@@ -3,6 +3,8 @@ import functools
 import numpy as np
 import pybullet as pb
 
+MAX_STEP_TIME = 30
+
 class Simulator(object):
   def __init__(
     self,
@@ -40,6 +42,8 @@ class Simulator(object):
     self._num_steps = num_steps
     if not num_steps:
       self._velocity_threshold = velocity_threshold
+
+    self._max_step_count = MAX_STEP_TIME/time_step
 
     self._id = -1
     self._new = None
@@ -207,7 +211,7 @@ class Simulator(object):
     # Store the pose where the object was originally placed
     self._place_poses.append(self.getBasePositionAndOrientation(self._objects[-1]))
 
-    self._steps_counter[0] = 1
+    steps_counter = 1
     if smooth_placing:
       while not self._drop():
         self.resetBaseVelocity(
@@ -216,18 +220,30 @@ class Simulator(object):
           [0, 0, 0]
         )
         self.stepSimulation()
-        self._steps_counter[0] +=1
+        steps_counter +=1
+        if steps_counter > self._max_step_count:
+          raise RuntimeError(
+            "Maximum number of simulator steps ({}) reached. This may be caused by incorrect behaviour due to a large value of time_step".format(self._max_step_count)
+          )
+    # Store step counter before dropping object
+    self._steps_counter[0] = steps_counter
 
+  
     # Get poses of all objects at the beggining of the simulator step.
     self._initial_poses = [
       self.getBasePositionAndOrientation(i)
       for i in self._objects
     ]
 
-    self._steps_counter[1] = 0
     while not self._stop():
       self.stepSimulation()
-      self._steps_counter[1] += 1
+      steps_counter += 1
+      if steps_counter > self._max_step_count:
+        raise RuntimeError(
+          "Maximum number of simulator steps ({}) reached. This may be caused by incorrect behaviour due to a large value of time_step".format(self._max_step_count)
+        )
+    # Store step counter after dropping object
+    self._steps_counter[1] = steps_counter - self._steps_counter[0]
 
     # Get poses of all objects at the end of the simulator step.
     self._final_poses = [
