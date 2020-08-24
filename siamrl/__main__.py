@@ -90,17 +90,30 @@ def test(args):
   if args.baselines:
     baseline_args = {k:v for k,v in args.baseline_args} if args.baseline_args else {}
     batched = len(observation_space[0].shape) == 4
-    if 'all' in args.baselines:
-      baselines = siamrl.baselines.methods
-    else:
-      baselines = args.baselines
-    for key in baselines:
-      policies[key] = siamrl.Baseline(
-        method=key, 
+
+    # for k,v in args.baselines:
+    #   if k == 'all':
+    #   baselines.pop('all')
+    #   for method in siamrl.baselines.methods:
+    #     if method not in baselines:
+    #       baselines[method] = {}
+
+    for method,kwa in args.baselines:
+      kwargs = baseline_args.copy()
+      kwargs.update(kwa)
+
+      name = method
+      i = 0
+      while name in policies:
+        i += 1
+        name = method+str(i)
+
+      policies[name] = siamrl.Baseline(
+        method=method, 
         value=True, 
         batched=batched, 
         batchwise=batched,
-        **baseline_args,
+        **kwargs,
       )
   
   save = args.save_dir or args.save
@@ -127,7 +140,7 @@ def generate(args):
     irregularity += args.irregularity_range
   if not irregularity:
     # Use this range if nothing was provided.
-    irregularity = np.arange(0.,1.,0.05)
+    irregularity = np.arange(0.05,1.05,0.05)
 
   n_i = int((1-args.split)*args.number/len(irregularity))
   n_test = args.number-len(irregularity)*n_i
@@ -157,6 +170,7 @@ def generate(args):
       show=args.show, 
       irregularity=irr,
       extents=args.extents,
+      subdivisions=args.subdivisions,
     )
     if args.verbose:
       print('{}: {}/{} done.'.format(datetime.now(), (i+1)*n_i, args.number))
@@ -181,10 +195,11 @@ def generate(args):
       args.number,
       args.number,
       etime, 
-      etime/args.number,
+      etime/(args.number or 1),
     ))
   
-  if args.plot:
+
+  if args.plot or args.plot_previous:
     if plt is None:
       raise ImportError("matplotlib must be installed to run generate with --plot option.")
     plot_dir = siamrl.datapath(
@@ -196,6 +211,15 @@ def generate(args):
 
     data = defaultdict(lambda: defaultdict(lambda: list()))
     values = defaultdict(lambda: np.array([]))
+
+    if args.plot_previous:
+      fnames = siamrl.envs.data.matching(
+        'generated', 
+        '*.csv'
+      )
+      irregularity = [float(os.path.split(fname)[-1].split('.')[0])/100 for fname in fnames]
+      irregularity = np.sort(irregularity)
+
     for i in irregularity:
       fname = siamrl.envs.data.path(
         'generated', 
@@ -236,7 +260,8 @@ def generate(args):
 
     y = np.array([v for v in values.values()])
     corrcoef = np.corrcoef(y)
-    im,_ = siamrl.heatmap.heatmap(corrcoef, values.keys(), values.keys(), cbarlabel='Correlation coefficient')
+    fig,ax = plt.subplots(constrained_layout=True)
+    im,_ = siamrl.heatmap.heatmap(corrcoef, values.keys(), values.keys(), ax=ax, cbarlabel='Correlation coefficient')
     siamrl.heatmap.annotate_heatmap(im)
     plt.savefig(os.path.join(plot_dir, 'corrcoef.pdf'))
     plt.savefig(os.path.join(plot_dir, 'corrcoef.png'))
@@ -255,12 +280,17 @@ def test_dir_type(arg):
   else:
     return (arg, [None])
 
+def baseline_with_args(arg):
+  arg = arg.split(',')
+  kwargs = [key_value_type(a) for a in arg[1:]]
+  return (arg[0], {k:v for k,v in kwargs}) 
+
 def key_value_type(arg):
   """Parse an argument with the format key=value"""
   k,v = arg.split('=')
   try:
     v = eval(v)
-  except NameError:
+  except (NameError, SyntaxError):
     pass
   return k,v
 
@@ -326,7 +356,7 @@ parser_test.add_argument('--env-arg-list', type=key_values_list_type,
   metavar='ARG=VALUE0[,VALUE1,...]', help='run a test for each of this environment argument values')
 parser_test.add_argument('-d', '--directory', nargs='+', type=test_dir_type,
   metavar='DIR[,ITER,...]', help='trained policies to test')
-parser_test.add_argument('-b', '--baselines', nargs='+', 
+parser_test.add_argument('-b', '--baselines', nargs='+', type=baseline_with_args,
   help='baseline policies to test')
 parser_test.add_argument('--baseline-args', nargs='+', type=key_value_type,
   metavar='ARG=VALUE', help='arguments to pass to the baselines constructor')
@@ -377,6 +407,8 @@ parser_generate.add_argument('--irregularity-range', type=range_type,
   metavar='START:STOP:STEP', help='range of values for the irregularity of the models')
 parser_generate.add_argument('--plot', action='store_true',
   help='whether to produce plots of the shape metrics distribution vs. irregularity')
+parser_generate.add_argument('--plot-previous', action='store_true',
+  help='whether to include previous models in the directory in the produced plots')
 parser_generate.add_argument('--clear', action='store_true',
   help='whether to remove previous models from the directory (only used for the default directory)')
 parser_generate.set_defaults(func=generate)

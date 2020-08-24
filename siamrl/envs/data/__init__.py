@@ -43,10 +43,10 @@ def generated(
   rectangularity=None, 
   aspectratio=None, 
 ):
-  """ Returns a list of the urdf names from the 'generated' directory.
+  """ Returns a list of the urdf file names from the 'generated' directory.
 
   Args:
-    name: common prefix of the required urdf's.
+    name: common prefix of the required urdf files.
     test: whether to fetch the file names from the test set directory.
     volume: if provided, returned files are filtered by object 
       volume. Either a scalar for minimum value or a tuple with 

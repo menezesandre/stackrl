@@ -116,7 +116,7 @@ class StackEnv(gym.Env):
       use_gui=use_gui, 
       time_step=sim_time_step, 
       gravity=gravity, 
-      spawn_position=[0,0,2*max_z], 
+      spawn_position=[0,0,max_z + object_max_dimension], 
       spawn_orientation=[0,0,0,1],
       num_steps=num_sim_steps,
       velocity_threshold=velocity_threshold
@@ -153,7 +153,6 @@ class StackEnv(gym.Env):
         raise ValueError("Invalid value {} for argument rewarder".format(rewarder))
     elif not issubclass(rewarder, Rewarder):
       raise TypeError("Invalid type {} for argument rewarder".format(type(rewarder)))
-    reward_params = reward_params or {}
     self._rew = rewarder(
       simulator=self._sim, 
       observer=self._obs,

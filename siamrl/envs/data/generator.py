@@ -69,7 +69,7 @@ def box(
   radius=0.0625,
   irregularity=0.,
   extents=None,
-  subdivisions=2,
+  subdivisions=3,
   seed=None,
 ):
   """Generate an irregular mesh from a box.

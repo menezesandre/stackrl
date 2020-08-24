@@ -17,6 +17,7 @@ class PseudoSiamFCN(tf.keras.Model):
     left_layers=layers.unet,
     right_layers=None,
     pos_layers=layers.pos_layers,
+    inspect=False,
     seed=None,
     name='PseudoSiamFCN',
   ):
@@ -85,12 +86,15 @@ class PseudoSiamFCN(tf.keras.Model):
       (seed(), seed())
     )
 
-    outputs = layers.correlation(*x)
-    outputs = pos_layers(
-      outputs, 
+    corr = layers.correlation(*x)
+    values = pos_layers(
+      corr, 
       seed=seed(),
     )
-    outputs = tf.keras.layers.Flatten()(outputs)
+    outputs = tf.keras.layers.Flatten()(values)
+
+    if inspect:
+      outputs = (outputs, *x, corr, values)
 
     super(PseudoSiamFCN, self).__init__(
       inputs=inputs, 
@@ -113,6 +117,7 @@ class DeepQSiamFCN(tf.keras.Model):
     dueling=False,
     dueling_avg_pool=True,
     dueling_units=512,
+    inspect=False,
     seed=None,
     name='DeepQSiamFCN',
   ):
@@ -153,38 +158,41 @@ class DeepQSiamFCN(tf.keras.Model):
     if right_filters != left_filters and corr_channels is None:
       corr_channels = min(left_filters, right_filters)
 
-    x = layers.unet(
+    x,x0 = layers.unet(
       x, 
       depth=left_depth, 
       filters=left_filters, 
       out_channels=corr_channels,
-      double_endpoint=dueling,
+      double_endpoint=True,
       seed=seed(),
       name='Left',
     )
-    w = layers.unet(
+    w,w0 = layers.unet(
       w, 
       depth=right_depth, 
       filters=right_filters, 
       out_channels=corr_channels,
+      double_endpoint=True,
       seed=seed(),
       name='Right',
     )
     if dueling:
-      x, x0 = x
-      x0 = layers.value(x0, avg=dueling_avg_pool, units=dueling_units, seed=seed())
+      v = layers.value(x0, avg=dueling_avg_pool, units=dueling_units, seed=seed())
 
-    outputs = layers.correlation(x, w)
-    outputs = layers.pos_layers(
-      outputs,
+    corr = layers.correlation(x, w)
+    values = layers.pos_layers(
+      corr,
       filters=pos_filters,
       depth=pos_depth,
       seed=seed(),
     )
-    outputs = tf.keras.layers.Flatten()(outputs)
 
+    outputs = tf.keras.layers.Flatten()(values)
     if dueling:
-      outputs = outputs - tf.reduce_mean(outputs, axis=-1, keepdims=True) + x0
+      outputs = outputs - tf.reduce_mean(outputs, axis=-1, keepdims=True) + v
+
+    if inspect:
+      outputs = (outputs, x, x0, w, w0, corr, values)
 
     super(DeepQSiamFCN, self).__init__(
       inputs=inputs, 

@@ -206,34 +206,6 @@ class PoseRewarder(Rewarder):
         raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
       self._pexp, self._oexp = params[:2]
 
-    # if p is not None:
-    #   # Compute position penalty exponent from parameter p.
-    #   # this parameter gives the fraction of the maximum distance
-    #   # from original position that corresponds to 1% penalty on 
-    #   # the reward.
-    #   p = float(p)
-    #   if p <= 0:
-    #     p = None
-    #   elif p >= 1:
-    #     p = np.inf
-    #   else:
-    #     p = -1/np.log2(p)
-    # self._pexp = p
-
-    # if o is not None:
-    #   # Compute orientation penalty exponent from parameter o.
-    #   # this parameter gives the fraction of the maximum distance
-    #   # from original orientation that corresponds to 1% penalty on 
-    #   # the reward.
-    #   o = float(o)
-    #   if o <= 0:
-    #     o = None
-    #   elif o >= 1:
-    #     o = np.inf
-    #   else:
-    #     o = -1/np.log2(o)
-    # self._oexp = o
-
   def call(self):
     """Returns the reward computed from the current poses."""
 
@@ -269,32 +241,30 @@ class OccupationRatioRewarder(Rewarder):
     self,
     *args,
     params=False,
-    o=None,
     **kwargs,
   ):
     """
     Args:
-      params: if True, the returned reward is the (negative) difference
-        between the current occupation ratio and 1 (full target volume). 
+      params: if True, the reward is based on the ratio of the current
+        volume that is inside the target, rather than the ratio of the 
+        target that is occupied.
     """
     super(OccupationRatioRewarder, self).__init__(*args, **kwargs)
     if not np.isscalar(params):
       params = params[0]
-    self._negative = bool(params)
+    self._mode = bool(params)
 
   def call(self):
     """Returns the reward computed from the occupation ratio."""
     reward = np.sum(np.minimum(
       self._obs.state[0][self._goal_bin],
       self._goal_z
-    ))/self._goal_volume
-
-    if self._negative:
-      reward -= 1
-      # Previous computation is not discounted on the negative case.
-      prev_reward = 0
+    ))
+    if self._mode:
+      reward /= self._obs.state[0].sum()
     else:
-      prev_reward = self._memory
-      self._memory = reward
+      reward /= self._goal_volume
 
+    prev_reward = self._memory
+    self._memory = reward
     return reward - prev_reward

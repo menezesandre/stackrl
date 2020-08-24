@@ -208,9 +208,6 @@ class Simulator(object):
 
     self._place(position, orientation)
 
-    # Store the pose where the object was originally placed
-    self._place_poses.append(self.getBasePositionAndOrientation(self._objects[-1]))
-
     steps_counter = 1
     if smooth_placing:
       while not self._drop():
@@ -225,6 +222,10 @@ class Simulator(object):
           raise RuntimeError(
             "Maximum number of simulator steps ({}) reached. This may be caused by incorrect behaviour due to a large time step value ({}s)".format(self._max_step_count, self._time_step)
           )
+
+    # Store the pose where the object was originally placed
+    self._place_poses.append(self.getBasePositionAndOrientation(self._objects[-1]))
+
     # Store step counter before dropping object
     self._steps_counter[0] = steps_counter
 

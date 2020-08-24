@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<robot name="65_363">
+  <link name="link">
+    <contact>
+      <lateral_friction value="0.6"/>
+    </contact>
+    <inertial>
+      <mass value = "0.31809961620219307"/>
+      <inertia ixx="8.528220216362837e-05" ixy="-1.4832758751666141e-05" ixz="2.3860797755090396e-05" iyy="0.000240350569691713" iyz="-2.1306358904370384e-06" izz="0.0002656663428648654" />
+    </inertial>
+    <visual name="visual">
+      <geometry>
+        <mesh filename="65_363.obj"/>
+      </geometry>
+      <material name="material">
+        <color rgba="0.5322505596018072 0.5322505596018072 0.5322505596018072 1.0"/>
+      </material>
+    </visual>
+    <collision name="collision">
+      <geometry>
+        <mesh filename="65_363.obj"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>
