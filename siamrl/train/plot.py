@@ -90,7 +90,7 @@ def get_save_name(path, name=None, ext='png'):
     name = '{}_{}'.format(pref, name)
   return os.path.join(path,'plots',ext,'{}.{}'.format(name,ext))
 
-def _plot(fname, x_key, y_keys, smooth=0, split=None, baselines=None, show=False, legend='Train', save_as=None):
+def _plot(fname, x_key, y_keys, smooth=0, split=None, baselines=None, show=False, legend='Train', save_as=None, clip=None):
   if plt is None:
     raise ImportError("matplotlib must be installed to run plot.")
 
@@ -197,20 +197,22 @@ def _plot(fname, x_key, y_keys, smooth=0, split=None, baselines=None, show=False
   #   plt.legend(legend, loc='best')
   if baselines or ys_std:
     plt.legend(loc='best')
-  for ax, key, y in zip(axs, y_keys, ys):
-    ax.set_ylabel(key)
-    ylim = ax.get_ylim()
-    _mean = np.mean(y)
-    _std = np.std(y)
-    if ylim[0] >= 0:
-      ymin = ylim[0]
-    else:
-      ymin = min(0, max(ylim[0], _mean - 10*_std))
-    if ylim[1] <= 0:
-      ymax = ylim[1]
-    else:
-      ymax = max(0,min(ylim[1], _mean + 10*_std))
-    ax.set_ylim(ymin,ymax)
+
+  if clip:
+    for ax, key, y in zip(axs, y_keys, ys):
+      ax.set_ylabel(key)
+      ylim = ax.get_ylim()
+      _mean = np.mean(y)
+      _std = np.std(y)
+      if ylim[0] >= 0:
+        ymin = ylim[0]
+      else:
+        ymin = min(0, max(ylim[0], _mean - clip*_std))
+      if ylim[1] <= 0:
+        ymax = ylim[1]
+      else:
+        ymax = max(0,min(ylim[1], _mean + clip*_std))
+      ax.set_ylim(ymin,ymax)
 
   axs[-1].set_xlabel(x_key)
 
@@ -232,7 +234,7 @@ def _plot(fname, x_key, y_keys, smooth=0, split=None, baselines=None, show=False
   else:
     plt.close()
 
-def plot_value(path, show=False, save_as=None):
+def plot_value(path, show=False, save_as=None, **kwargs):
   if isinstance(path, str):
     fname = os.path.join(path, 'eval.csv')
   else:
@@ -356,15 +358,15 @@ def plot_eval(path, value=False, baselines=['random', 'ccoeff'], **kwargs):
     **kwargs,
   )
 
-def plot(path, value=False, baselines=None):
+def plot(path, value=False, baselines=None, **kwargs):
   try:
-    plot_train(path)
-    plot_eval(path, value=value, baselines=baselines)
+    plot_train(path, **kwargs)
+    plot_eval(path, value=value, baselines=baselines, **kwargs)
     if value:
-      plot_value(path)
+      plot_value(path, **kwargs)
   except FileNotFoundError as e:
     # If files don't exist in given path, use it as relative from Siam-RL/data/train
     if path.startswith(siamrl.datapath('train')):
       raise e
     else:
-      return plot(siamrl.datapath('train', path), value=value, baselines=baselines)
+      return plot(siamrl.datapath('train', path), value=value, baselines=baselines, **kwargs)

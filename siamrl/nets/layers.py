@@ -20,14 +20,17 @@ def kernel_initializer_generator(kernel_initializer=None, seed=None):
 @gin.configurable(module='siamrl.nets')
 def correlation(in0, in1, parallel_iterations=None):
   """Aplies the correlation layer to inputs tensors"""
-
-  def fn(inputs):
-    x = tf.nn.conv2d(tf.expand_dims(inputs[0], 0), tf.expand_dims(inputs[1], -1), 
-      strides=1, padding='VALID')
-    return tf.squeeze(x, axis=0)
   
   return k.layers.Lambda(lambda inputs: tf.map_fn(
-    fn=fn, 
+    fn=lambda inps: tf.squeeze(
+      tf.nn.conv2d(
+        tf.expand_dims(inps[0], 0), 
+        tf.expand_dims(inps[1], -1), 
+        strides=1, 
+        padding='VALID'
+      ),
+      axis=0,
+    ), 
     elems=inputs, 
     parallel_iterations=parallel_iterations,
     fn_output_signature=in0.dtype,
@@ -133,6 +136,7 @@ def unet(
   inputs, 
   depth=3,
   filters=64,
+  upsampling_kernel_size=2,
   out_channels=None,
   out_activation=None,
   kernel_initializer=None,
@@ -147,6 +151,9 @@ def unet(
     depth: number of levels.
     filters: number of filters of the first level (each level doubles
       the number of filters of the previous one).
+    upsampling_kernel_size: kernel size of the up convolutions in the
+      expanding path. The up convolutions have stride 2, so ideally 
+      this parameter should be even to avoid checkerboard artifacts.
     out_channels: number of channels in the output. If provided, a
       1x1 convolution with this number of filters is aplied to the 
       output. If None, number of output channels is the same as filters.
@@ -217,7 +224,7 @@ def unet(
   for i in range(depth-1, -1, -1):
     x = k.layers.Conv2DTranspose(
       filters=filters*2**i,
-      kernel_size=2,
+      kernel_size=upsampling_kernel_size,
       strides=2,
       padding='same',
       activation='relu',
@@ -245,10 +252,11 @@ def unet(
       kernel_initializer=next(kernel_initializer),
       name=name('convout'),
     )(x)
+
   if double_endpoint:
-    return x,x0
-  else:
-    return x
+    x = x,x0
+
+  return x
 
 @gin.configurable(module='siamrl.nets')
 def mobile_unet(

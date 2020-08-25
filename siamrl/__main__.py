@@ -42,10 +42,10 @@ def train(args):
 
 def plot(args):
   if args.combined:
-    siamrl.train.plot(args.directory, value=args.value, baselines=args.baselines)
+    siamrl.train.plot(args.directory, value=args.value, baselines=args.baselines, show=args.show, clip=args.clip)
   else:
     for path in args.directory:
-      siamrl.train.plot(path, value=args.value, baselines=args.baselines)
+      siamrl.train.plot(path, value=args.value, baselines=args.baselines, show=args.show, clip=args.clip)
 
 def test(args):
   make_args = {k:v for k,v in args.env_args} if args.env_args else {}
@@ -343,6 +343,10 @@ parser_plot.add_argument('-c', '--combined', action='store_true',
   help='whether produce plots from combined (average) data instead of from each directory separatly.')
 parser_plot.add_argument('-v', '--value', action='store_true', 
   help='whether to show value estimates in plots')
+parser_plot.add_argument('-s', '--show', action='store_true', 
+  help='whether to show the plots')
+parser_plot.add_argument('--clip', type=int,
+  help='number of standard deviations of the data to limit the y axis')
 parser_plot.set_defaults(func=plot)
 
 # parser for the test command
