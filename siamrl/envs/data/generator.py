@@ -111,7 +111,7 @@ def box(
     
   mesh = mesh.convex_hull
   mesh.apply_translation(-mesh.center_mass)  # pylint: disable=no-member
-  factor = 2*radius/mesh.bounding_sphere.extents[0]  # pylint: disable=no-member
+  factor = 2*radius/max(mesh.bounding_box_oriented.extents)  # pylint: disable=no-member
   if factor < 1:
     mesh.apply_transform(transformations.scale_matrix(factor))  # pylint: disable=no-member
   return mesh
@@ -208,8 +208,8 @@ def generate(
       angle=np.pi/2, 
       direction=[0,1,0]
     ))
-    # Correct residual translation due to rotation
-    mesh.apply_translation(-mesh.center_mass) 
+    # # Correct residual translation due to rotation
+    # mesh.apply_translation(-mesh.center_mass) 
 
     mesh.process()
     assert mesh.is_watertight
@@ -249,6 +249,9 @@ def generate(
         name=name_i,
         friction=0.6,
         mass=mesh.mass,
+        x=mesh.center_mass[0],
+        y=mesh.center_mass[1],
+        z=mesh.center_mass[2],
         ixx=mesh.moment_inertia[0,0],
         ixy=mesh.moment_inertia[0,1],
         ixz=mesh.moment_inertia[0,2],
