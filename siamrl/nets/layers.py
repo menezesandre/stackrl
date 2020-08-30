@@ -421,7 +421,7 @@ def default_branch_layers(
     **kwargs,
   )
 
-def value(inputs, avg=True, units=512, kernel_initializer=None, seed=None):
+def value(inputs, avg=True, units=512, depth=1, kernel_initializer=None, seed=None):
   kernel_initializer = kernel_initializer_generator(
     kernel_initializer=kernel_initializer,
     seed=seed,
@@ -431,7 +431,8 @@ def value(inputs, avg=True, units=512, kernel_initializer=None, seed=None):
     x = k.layers.GlobalAvgPool2D()(inputs)
   else:
     x = k.layers.GlobalMaxPool2D()(inputs)
-  x = k.layers.Dense(units, activation='relu', kernel_initializer=next(kernel_initializer))(x)
+  for _ in range(depth):
+    x = k.layers.Dense(units, activation='relu', kernel_initializer=next(kernel_initializer))(x)
   return k.layers.Dense(1, kernel_initializer=next(kernel_initializer))(x)
 
 @gin.configurable(module='siamrl.nets')
@@ -440,6 +441,7 @@ def pos_layers(
   filters=32,
   depth=2,
   kernel_initializer=None,
+  compat=False,
   **kwargs,
 ):
   """Aplies the default sequence of layers after the correlation for the
@@ -459,7 +461,7 @@ def pos_layers(
         'padding':'same'
       }),
     ]*depth + [
-      (k.layers.SeparableConv2D, {
+      (k.layers.Conv2D if not compat else k.layers.SeparableConv2D, {
         'filters':1, 
         'kernel_size':1, 
         'padding':'same'

@@ -157,48 +157,50 @@ def generate(args):
         if os.path.isfile(fname):
           os.remove(fname)
 
-  if args.verbose:
-    print('{}: Generating {} objects.'.format(datetime.now(), args.number))
-    itime = time.perf_counter()
-  for i, irr in enumerate(irregularity):
-    siamrl.envs.data.generate(
-      n=n_i, 
-      name=str(int(100*irr)), 
-      align_pai=args.align_pai, 
-      directory=directory, 
-      seed=args.seed, 
-      show=args.show, 
-      irregularity=irr,
-      extents=args.extents,
-      subdivisions=args.subdivisions,
-    )
+  if args.plot_only:
+    args.plot_previous = True
+  else:
     if args.verbose:
-      print('{}: {}/{} done.'.format(datetime.now(), (i+1)*n_i, args.number))
+      print('{}: Generating {} objects.'.format(datetime.now(), args.number))
+      itime = time.perf_counter()
+    for i, irr in enumerate(irregularity):
+      siamrl.envs.data.generate(
+        n=n_i, 
+        name=str(int(100*irr)), 
+        align_pai=args.align_pai, 
+        directory=directory, 
+        seed=args.seed, 
+        show=args.show, 
+        irregularity=irr,
+        extents=args.extents,
+        subdivisions=args.subdivisions,
+      )
+      if args.verbose:
+        print('{}: {}/{} done.'.format(datetime.now(), (i+1)*n_i, args.number))
 
-  if n_test:
-    seed = args.seed+1 if args.seed is not None else None 
-    siamrl.envs.data.generate(
-      n=n_i, 
-      name=str(int(100*irr)), 
-      align_pai=args.align_pai, 
-      directory=os.path.join(directory, 'test'), 
-      seed=seed,
-      show=args.show, 
-      irregularity=irr,
-      extents=args.extents,
-    )
+    if n_test:
+      seed = args.seed+1 if args.seed is not None else None 
+      siamrl.envs.data.generate(
+        n=n_i, 
+        name=str(int(100*irr)), 
+        align_pai=args.align_pai, 
+        directory=os.path.join(directory, 'test'), 
+        seed=seed,
+        show=args.show, 
+        irregularity=irr,
+        extents=args.extents,
+      )
 
-  if args.verbose:
-    etime = time.perf_counter() - itime
-    print('{}: {}/{} done. Total elapsed time: {} s ({} s/object)'.format(
-      datetime.now(),
-      args.number,
-      args.number,
-      etime, 
-      etime/(args.number or 1),
-    ))
+    if args.verbose:
+      etime = time.perf_counter() - itime
+      print('{}: {}/{} done. Total elapsed time: {} s ({} s/object)'.format(
+        datetime.now(),
+        args.number,
+        args.number,
+        etime, 
+        etime/(args.number or 1),
+      ))
   
-
   if args.plot or args.plot_previous:
     if plt is None:
       raise ImportError("matplotlib must be installed to run generate with --plot option.")
@@ -220,6 +222,8 @@ def generate(args):
       irregularity = [float(os.path.split(fname)[-1].split('.')[0])/100 for fname in fnames]
       irregularity = np.sort(irregularity)
 
+    volume_ref = 1.
+
     for i in irregularity:
       fname = siamrl.envs.data.path(
         'generated', 
@@ -240,13 +244,20 @@ def generate(args):
           values[k] = np.concatenate([values[k], v])
       values['Irregularity'] = np.concatenate([values['Irregularity'], i*np.ones_like(v)])
 
+      if i==0:
+        volume_ref = values['Volume'][-1]
+
+    for k in data['Volume']:
+      data['Volume'][k] = np.divide(data['Volume'][k], volume_ref) 
+
     _, axs = plt.subplots(3, 1, sharex=True)
 
     for ax, k in zip(axs, data):
 
       ax.errorbar(irregularity, data[k]['mean'], yerr=(np.subtract(data[k]['mean'],data[k]['min']), np.subtract(data[k]['max'],data[k]['mean'])), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
       ax.errorbar(irregularity, data[k]['mean'], yerr=data[k]['std'], fmt='bo', capsize=4, label='Mean +/- std dev')
-      ax.set_ylabel(k)
+
+      ax.set_ylabel(k if k != 'AspectRatio' else 'Aspect ratio')
 
     axs[-1].set_xlabel('Irregularity')
     plt.legend(loc='best')
@@ -269,6 +280,23 @@ def generate(args):
       plt.show()
     else:
       plt.close()
+
+    fig = plt.figure(constrained_layout=True)
+    ax = fig.add_subplot(111, projection='3d')
+    scatter = ax.scatter(values['AspectRatio'], values['Volume']/volume_ref, values['Rectangularity'], marker='.', c=values['Irregularity'])
+    ax.set_ylabel('Volume')
+    ax.set_zlabel('Rectangularity')
+    ax.set_xlabel('Aspect ratio')
+    ax.view_init(elev=30, azim=105)
+    fig.colorbar(scatter, label='Irregularity')
+    plt.savefig(os.path.join(plot_dir, 'distribution.pdf'))
+    plt.savefig(os.path.join(plot_dir, 'distribution.png'))
+    if args.show:
+      plt.show()
+    else:
+      plt.close()
+    
+
 
 # Costum types for the parser
 
@@ -413,6 +441,8 @@ parser_generate.add_argument('--plot', action='store_true',
   help='whether to produce plots of the shape metrics distribution vs. irregularity')
 parser_generate.add_argument('--plot-previous', action='store_true',
   help='whether to include previous models in the directory in the produced plots')
+parser_generate.add_argument('--plot-only', action='store_true',
+  help='only produce plots from previous models (no generation)')
 parser_generate.add_argument('--clear', action='store_true',
   help='whether to remove previous models from the directory (only used for the default directory)')
 parser_generate.set_defaults(func=generate)

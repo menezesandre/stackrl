@@ -10,6 +10,10 @@ import gym
 import numpy as np
 from scipy import signal
 from scipy import ndimage
+try:
+  import cv2 as cv
+except :
+  cv = None
 
 # from siamrl import envs
 from siamrl import agents
@@ -19,24 +23,12 @@ def get_inputs(inputs, mask=None):
   gmax = inputs[0][:,:,1].max()
   o = inputs[0][:,:,0]/gmax
   n = inputs[1][:,:,0]/gmax
-  f = np.zeros(np.subtract(o.shape, n.shape)+1)
+  return o,n
 
-  if mask is not None:
-    if not isinstance(mask, np.ndarray):
-      mask = np.array(mask, dtype='bool')
-    if mask.size != f.size:
-      raise ValueError("Mask doesn't match the output shape")
-    elif mask.shape != f.shape:
-      mask = mask.reshape(f.shape)
-
-  return o,n,f,mask
-
-def height(inputs, mask=None, add_gradient=False, **kwargs):
+def height(inputs, mask=None, **kwargs):
   """Height based heuristic."""
-  if add_gradient:
-    mask = None
-  o,n,f,mask = get_inputs(inputs, mask)
-
+  o,n = get_inputs(inputs, mask)
+  f = np.zeros(np.subtract(o.shape, n.shape)+1)
   n_where = n > 0
 
   for i in range(f.shape[0]):
@@ -48,16 +40,13 @@ def height(inputs, mask=None, add_gradient=False, **kwargs):
           0,
         ))
 
-  if add_gradient:
-    dx,dy = np.gradient(f)
-    f += np.sqrt(dx**2 + dy**2)*float(add_gradient)
-
   return f
 
 def difference(inputs, mask=None, difference_exponent=2, weights_exponent=0, return_height=False, **kwargs):
   """Difference based heuristic."""
-  o,n,f,mask = get_inputs(inputs, mask)
+  o,n = get_inputs(inputs)
 
+  f = np.zeros(np.subtract(o.shape, n.shape)+1)
   height = np.zeros_like(f) if return_height else None
 
   n_where = n > 0
@@ -87,11 +76,20 @@ def difference(inputs, mask=None, difference_exponent=2, weights_exponent=0, ret
 
   return f
 
-def corrcoef(inputs, mask=None, **kwargs):
+def corrcoef(inputs, mask=None, localized=False, **kwargs):
   """Correlation coefficient based heuristic."""
-  o,n,f,mask = get_inputs(inputs, mask)
+  o,n = get_inputs(inputs)
 
-  n_where = n > 0
+  if not localized:
+    if cv is not None:
+      return cv.matchTemplate(o.astype('float32'),n.astype('float32'),cv.TM_CCOEFF_NORMED)
+
+    n_where = np.ones_like(n, dtype='bool')
+  else:
+    n_where = n > 0
+
+  f = np.zeros(np.subtract(o.shape, n.shape)+1)
+
   n_count = np.count_nonzero(n_where)
   n -= np.sum(np.where(n_where, n, 0))/n_count
   n_var = np.sum(np.where(n_where, n**2, 0))
@@ -115,65 +113,46 @@ def corrcoef(inputs, mask=None, **kwargs):
 
   return f
 
-def gradcorr(inputs, mask=None, **kwargs):
+def gradcorr(inputs, sobel=False, **kwargs):
   """Correlation coefficient based heuristic."""
-  o,n,f,mask = get_inputs(inputs, mask)
+  o,n = get_inputs(inputs)
 
-  n_dx, n_dy = np.gradient(n)
-  n_varx = np.sum(n_dx**2)
-  n_vary = np.sum(n_dy**2)
+  uniform = np.ones_like(n)
 
-  o_dx, o_dy = np.gradient(o)
+  if sobel:
+    o_dx, o_dy = ndimage.sobel(o, axis=0), ndimage.sobel(o, axis=1)
+    n_dx, n_dy = ndimage.sobel(n, axis=0), ndimage.sobel(n, axis=1)
+  else:
+    o_dx, o_dy = np.gradient(o)
+    n_dx, n_dy = np.gradient(n)
 
-  if n_varx == 0 and n_vary == 0:
-    # No need to calculate, everything will be zero
-    return f
+  vx = signal.correlate2d(o_dx**2, uniform, mode='valid')*np.sum(n_dx**2)
+  vy = signal.correlate2d(o_dy**2, uniform, mode='valid')*np.sum(n_dy**2)
 
-  for i in range(f.shape[0]):
-    for j in range(f.shape[1]):
-      if mask is None or mask[i,j]:
+  fx = signal.correlate2d(o_dx, n_dx, mode='valid')/np.sqrt(np.where(
+    vx, vx, 1.
+  ))
+  fy = signal.correlate2d(o_dy, n_dy, mode='valid')/np.sqrt(np.where(
+    vy, vy, 1.
+  ))
 
-        o_varx = np.sum(o_dx[i:i+n.shape[0], j:j+n.shape[0]]**2)
-        o_vary = np.sum(o_dy[i:i+n.shape[0], j:j+n.shape[0]]**2)
-        
-        if o_varx != 0 and n_varx != 0:
-          f[i,j] += np.sum(o_dx[i:i+n.shape[0], j:j+n.shape[0]]*n_dx)/(2*np.sqrt(o_varx*n_varx))
-        if o_vary != 0 and n_vary != 0:
-          f[i,j] += np.sum(o_dy[i:i+n.shape[0], j:j+n.shape[0]]*n_dy)/(2*np.sqrt(o_vary*n_vary))
+  return (fx + fy)/2
 
-  return f
-
-def filtered(inputs, mask=None, add_gradient=False, **kwargs):
-  if add_gradient:
-    mask = None
-
-  o,n,f,mask = get_inputs(inputs, mask)
-  
-  f = signal.convolve2d(o,n,mode='valid')/n.sum()
-
-  # n /= n.sum()
-  # for i in range(f.shape[0]):
-  #   for j in range(f.shape[1]):
-  #     if mask is None or mask[i,j]:
-  #       f[i,j] = np.sum(o[i:i+n.shape[0], j:j+n.shape[0]]*n)
-
-  if add_gradient:
-    dx,dy = np.gradient(f)
-    f += np.sqrt(dx**2 + dy**2)*float(add_gradient)
-
-  return f
+def correlate(inputs, **kwargs):
+  o,n = get_inputs(inputs)
+  return signal.correlate2d(o,n,mode='valid')/n.sum()
 
 def random(inputs, seed=None, **kwargs):
   """Returns random values in the same shape as the heuristics."""
   rng = np.random.default_rng(seed)
-  return rng.rand(
-    *(np.subtract(inputs[0].shape, inputs[1].shape)[:-1]+1)
+  return rng.random(
+    (np.subtract(inputs[0].shape, inputs[1].shape)[:-1]+1)
   )
 
-def goal_overlap(inputs, threshold=2/3, **kwargs):
+def goal_overlap(inputs, threshold=3/5, **kwargs):
   b = (inputs[0][:,:,0] < inputs[0][:,:,1]).astype('int')
   n = (inputs[1][:,:,0] > 0).astype('int')
-  f = signal.convolve2d(b, n, mode='valid')
+  f = signal.correlate2d(b, n, mode='valid')
   return f > threshold*f.max()
 
 methods = {
@@ -182,7 +161,7 @@ methods = {
   'difference': difference,
   'corrcoef':corrcoef,
   'gradcorr':gradcorr,
-  'filtered':filtered,
+  'correlate':correlate,
 }
 
 @gin.configurable(module='siamrl')
@@ -220,34 +199,22 @@ class Baseline(agents.PyGreedy):
     self.batchwise = batchwise
 
   def call(self, inputs):
+    values = self.model(inputs, **self.kwargs)
     if self.goal:
       mask = goal_overlap(inputs, **self.kwargs)
       
       if self.minorder:
-        values = self.model(inputs, **self.kwargs)
-
         minima = np.logical_and(
           mask,
           ndimage.minimum_filter(values, size=1+2*self.minorder, mode='constant') == values,
         )
 
         if np.any(minima):
-          m = np.argmin(values[minima])
-          # print('local minima', np.count_nonzero(minima))
           return np.argmin(np.where(minima, values, np.inf)), -values
-      else:
-        values = self.model(inputs, mask=mask, **self.kwargs)
 
       return np.argmin(np.where(mask, values, np.inf)), -values
     else:
-      values = self.model(inputs, **self.kwargs)
       return np.argmin(values), -values
-      
-
-      
-
-
-
 
 
 

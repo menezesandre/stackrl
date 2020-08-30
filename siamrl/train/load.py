@@ -104,6 +104,7 @@ def load(
     net.load_weights(os.path.join(wpath,'weights'))
     if verbose:
       print('Weights loaded from {}'.format(wpath))
+      net.summary()
     policy = agents.policies.Greedy(net, value=value, batchwise=batchwise)
     if py:
       policy = agents.policies.PyWrapper(policy, batched=batchwise)
