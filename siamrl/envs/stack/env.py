@@ -1,3 +1,5 @@
+import warnings
+
 import gym
 from gym import spaces
 from gym.envs import registry
@@ -7,7 +9,7 @@ import numpy as np
 from siamrl.envs import data
 from siamrl.envs.stack.simulator import Simulator, TestSimulator
 from siamrl.envs.stack.observer import Observer
-from siamrl.envs.stack.rewarder import Rewarder, PoseRewarder, OccupationRatioRewarder
+from siamrl.envs.stack.rewarder import Rewarder
 # from siamrl.baselines import Baseline
 
 try:
@@ -21,7 +23,6 @@ class StackEnv(gym.Env):
   metadata = {
     'dtypes': ['uint8', 'uint16', 'uint32', 'uint64', 'float16', 'float32', 'float64'],
     'render.modes': ['human', 'rgb_array'],
-    'rewarders': {'pose': PoseRewarder, 'occupation': OccupationRatioRewarder},
   }
 
   def __init__(
@@ -39,7 +40,7 @@ class StackEnv(gym.Env):
     observer=None,
     observable_size_ratio=4,
     resolution_factor=5,
-    max_z=0.5,
+    max_z=0.375,
     rewarder=None,
     goal_size_ratio=.25,
     reward_scale=1.,
@@ -143,22 +144,28 @@ class StackEnv(gym.Env):
       max_z=max_z
     )
 
-    # Set the rewarder.
-    if rewarder is None:
-      rewarder = PoseRewarder
-    elif isinstance(rewarder, str):
-      if rewarder in self.metadata['rewarders']:
-        rewarder = self.metadata['rewarders'][rewarder]
+    # Compatibility
+    if rewarder == 'position':
+      rewarder = 'do'
+      warnings.warn(
+        "Using 'position' as rewarder is drprecated. Use 'discounted_occupation' (or 'do') instead.", DeprecationWarning)
+    elif rewarder == 'occupation':
+      if reward_params:
+        rewarder = 'tr'
+        warnings.warn(
+          "Using 'occupation' as rewarder is drprecated. Use 'occupation_ratio' (or 'or') instead.", DeprecationWarning)
       else:
-        raise ValueError("Invalid value {} for argument rewarder".format(rewarder))
-    elif not issubclass(rewarder, Rewarder):
-      raise TypeError("Invalid type {} for argument rewarder".format(type(rewarder)))
-    self._rew = rewarder(
+        rewarder = 'or'
+        warnings.warn(
+          "Using 'occupation' as rewarder is drprecated. Use 'target_ratio' (or 'tr') instead.", DeprecationWarning)
+    # Set the rewarder.
+    self._rew = Rewarder(
       simulator=self._sim, 
       observer=self._obs,
       goal_size_ratio=goal_size_ratio,
       scale=reward_scale,
       seed=self._random.randint(2**32),
+      mode=rewarder,
       params=reward_params,
     )
 
@@ -253,7 +260,12 @@ class StackEnv(gym.Env):
     self._obs()
     # Compute reward.
     reward = self._rew()
-    return self.observation, reward, self._done, {}
+    if not np.isscalar(reward):
+      info = reward
+      reward = None
+    else:
+      info = {}
+    return self.observation, reward, self._done, info
 
   def reset(self):
     # Get episode's list of urdfs

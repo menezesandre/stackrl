@@ -4,12 +4,27 @@ from siamrl.envs.stack.simulator import Simulator
 from siamrl.envs.stack.observer import Observer
 
 class Rewarder(object):
+  modes = [
+    ['do', 'discounted_occupation', 'DiscountedOccupation'],
+    ['dt', 'discounted_target', 'DiscountedTarget'],
+    ['or', 'occupation_ratio', 'OccupationRatio'],
+    ['tr', 'target_ratio', 'TargetRatio'],
+    ['all'],
+  ]
+  ALL = 4
+  DO = 0
+  DT = 1
+  OR = 2
+  TR = 3
+
   margin_factor = 8
   def __init__(
     self,
     simulator,
     observer,
+    mode=None,
     goal_size_ratio=0.5,
+    goal_height_ratio=1.0,
     scale=1.,
     params=None,
     seed=None,
@@ -45,7 +60,7 @@ class Rewarder(object):
     self._shape, (self._goal_min_h,self._goal_min_w) = self._obs.shape
     self._goal_max_h, self._goal_max_w = self._shape
     self._goal_z = self._obs.max_z
-    
+
     # Set target size
     if not goal_size_ratio:
       self._goal_size = None
@@ -77,14 +92,69 @@ class Rewarder(object):
     self.scale = float(scale)
 
     # Memory to store previous rewards
-    self._memory = 0.
+    self._memory = [0., 1., 0., 1.]
 
     # Set the random number generator
     self._random, seed = seeding.np_random(seed)
 
+    # Set mode
+    if isinstance(mode, str):
+      mode = mode.lower()
+      for i,names in enumerate(self.modes):
+        if mode in names:
+          mode = i
+    elif mode is None:
+      mode = self.DO # default to discounted occupation
+
+    try:
+      _=self.modes[mode]
+    except (TypeError, IndexError):
+      raise ValueError('Invalid value {} for argument mode.'.format(mode))
+
+    self.mode = mode
+    if self.mode in (self.DO, self.DT, self.ALL):
+      # Set params of discounted occupation
+      self._pmax = max(self._obs.pixel_to_xy(self._obs.shape[1]))
+      self._omax = np.pi
+
+      if params is None:
+        self._pexp, self._oexp = None, None
+      elif np.isscalar(params):
+        if params < 0:
+          raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
+        self._pexp, self._oexp = params, params
+      elif len(params) == 1:
+        if params[0] < 0:
+          raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
+        self._pexp, self._oexp = params*2
+      elif len(params) >= 2:
+        if params[0] < 0 or params[1] < 0:
+          raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
+        self._pexp, self._oexp = params[:2]
+
   def __call__(self):
     """Returns the scaled reward"""
-    return self.call()*self.scale
+    if self.mode == self.ALL:
+      return {k[-1]:self.call(i) for i,k in enumerate(self.modes[:-1])}
+    else:
+      return self.call()
+
+  def call(self, mode=None):
+    mode = mode if mode is not None else self.mode
+    if mode == self.DO:
+      reward = self._discounted_occupation()
+    elif mode == self.DT:
+      reward = self._discounted_occupation()/len(self._sim.poses)
+    elif mode == self.OR:
+      reward = self._occupation()/self._goal_volume
+    elif mode == self.TR:
+      reward = self._occupation()/self._obs.state[0].sum()
+    else:
+      return None
+    prev_reward = self._memory[mode]
+    self._memory[mode] = reward
+    
+    return (reward-prev_reward)*self.scale
 
   @property
   def goal(self):
@@ -98,7 +168,7 @@ class Rewarder(object):
 
   def reset(self):
     """Reset reward memory and goal"""
-    self._memory = 0.
+    self._memory = [0., 1., 0., 1.]
     self._reset_goal()
 
   def seed(self, seed=None):
@@ -164,9 +234,42 @@ class Rewarder(object):
     self._goal_volume = np.sum(self._goal)
     self._goal_bin = self._goal != 0
 
-  def call(self):
-    """Reward computation to be implemented by subclasses."""
-    raise NotImplementedError("Subclasses must implement call method.")
+  def _discounted_occupation(self):
+    """Returns the reward computed from the current poses."""
+    reward = 0.
+    for p, (perr,oerr) in zip(self._sim.positions, self._sim.distances_from_place):
+      # Get position in pixels
+      u,v = self._obs.xy_to_pixel(p[:2])
+      # Check if it's inside goal
+      if (
+        u >= self._goal_lims[0][0] and 
+        v >= self._goal_lims[0][1] and 
+        u < self._goal_lims[1][0] and
+        v < self._goal_lims[1][1]
+      ):
+        r = 1.
+        if self._pexp is not None:
+          r *= max(0.,
+            ( 1 - (perr/self._pmax)**self._pexp) )
+        if self._oexp is not None:
+          r *= max(0.,
+            ( 1 - (oerr/self._omax)**self._oexp) )
+        reward += r
+
+    return reward
+
+  def _occupation(self):
+    return np.sum(np.minimum(
+      self._obs.state[0][self._goal_bin],
+      self._goal_z
+    ))
+
+  def _target_ratio(self):
+    return np.sum(np.minimum(
+      self._obs.state[0][self._goal_bin],
+      self._goal_z
+    ))/ self._obs.state[0].sum()
+
 
 class PoseRewarder(Rewarder):
   def __init__(
@@ -268,3 +371,10 @@ class OccupationRatioRewarder(Rewarder):
     prev_reward = self._memory
     self._memory = reward
     return reward - prev_reward
+
+  def reset(self):
+    """Reset reward memory and goal"""
+    # If using the ratio of the structure that is in the target,
+    # start with memory as 1. 
+    self._memory = 1. if self._mode else 0.
+    self._reset_goal()
