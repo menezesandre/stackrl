@@ -146,26 +146,22 @@ class StackEnv(gym.Env):
 
     # Compatibility
     if rewarder == 'position':
-      rewarder = 'do'
+      rewarder = 'dor'
       warnings.warn(
         "Using 'position' as rewarder is drprecated. Use 'discounted_occupation' (or 'do') instead.", DeprecationWarning)
     elif rewarder == 'occupation':
-      if reward_params:
-        rewarder = 'tr'
-        warnings.warn(
-          "Using 'occupation' as rewarder is drprecated. Use 'occupation_ratio' (or 'or') instead.", DeprecationWarning)
-      else:
-        rewarder = 'or'
-        warnings.warn(
-          "Using 'occupation' as rewarder is drprecated. Use 'target_ratio' (or 'tr') instead.", DeprecationWarning)
+      rewarder = 'or'
+      warnings.warn(
+        "Using 'occupation' as rewarder is drprecated. Use 'target_ratio' (or 'tr') instead.", DeprecationWarning)
     # Set the rewarder.
     self._rew = Rewarder(
       simulator=self._sim, 
       observer=self._obs,
+      metric=rewarder,
       goal_size_ratio=goal_size_ratio,
+      num_objects=episode_length,
       scale=reward_scale,
       seed=self._random.randint(2**32),
-      mode=rewarder,
       params=reward_params,
     )
 

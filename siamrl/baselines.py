@@ -149,7 +149,7 @@ def random(inputs, seed=None, **kwargs):
     (np.subtract(inputs[0].shape, inputs[1].shape)[:-1]+1)
   )
 
-def goal_overlap(inputs, threshold=3/5, **kwargs):
+def goal_overlap(inputs, threshold=0.75, **kwargs):
   b = (inputs[0][:,:,0] < inputs[0][:,:,1]).astype('int')
   n = (inputs[1][:,:,0] > 0).astype('int')
   f = signal.correlate2d(b, n, mode='valid')
@@ -160,7 +160,7 @@ methods = {
   'height': height,
   'difference': difference,
   'corrcoef':corrcoef,
-  'gradcorr':gradcorr,
+  # 'gradcorr':gradcorr,
   'correlate':correlate,
 }
 
