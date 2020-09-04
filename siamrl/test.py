@@ -36,11 +36,11 @@ def clean(path=None, extensions='.npz'):
   if os.path.isfile(path):
     if path.endswith('.npz'):
       os.remove(path)
-      return removed.append(path)
+      removed.append(path)
+      return removed
   elif os.path.isdir(path):
     for p in glob.glob(os.path.join(path,'*')):
       removed += clean(p)
-
   return removed
 
 def write(fname, force=False, **kwargs):

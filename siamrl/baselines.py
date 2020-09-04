@@ -42,7 +42,7 @@ def height(inputs, mask=None, **kwargs):
 
   return f
 
-def difference(inputs, mask=None, difference_exponent=2, weights_exponent=0, return_height=False, **kwargs):
+def difference(inputs, mask=None, difference_exponent=2, weights_exponent=2, return_height=False, **kwargs):
   """Difference based heuristic."""
   o,n = get_inputs(inputs)
 
@@ -153,15 +153,15 @@ def goal_overlap(inputs, threshold=0.75, **kwargs):
   b = (inputs[0][:,:,0] < inputs[0][:,:,1]).astype('int')
   n = (inputs[1][:,:,0] > 0).astype('int')
   f = signal.correlate2d(b, n, mode='valid')
-  return f > threshold*f.max()
+  return f >= threshold*f.max()
 
 methods = {
   'random': random,
+  'correlate':correlate,
   'height': height,
   'difference': difference,
   'corrcoef':corrcoef,
   # 'gradcorr':gradcorr,
-  'correlate':correlate,
 }
 
 @gin.configurable(module='siamrl')
@@ -170,7 +170,7 @@ class Baseline(agents.PyGreedy):
     self, 
     method='random', 
     goal=True,
-    minorder=0,
+    minorder=1,
     value=False, 
     unravel=False,
     batched=False,
