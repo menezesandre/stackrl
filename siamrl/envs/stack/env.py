@@ -17,7 +17,7 @@ try:
 except ImportError:
   plt = None
 
-DEFAULT_EPISODE_LENGTH = 40
+DEFAULT_EPISODE_LENGTH = 30
 
 class StackEnv(gym.Env):
   metadata = {
@@ -159,7 +159,7 @@ class StackEnv(gym.Env):
       observer=self._obs,
       metric=rewarder,
       goal_size_ratio=goal_size_ratio,
-      num_objects=episode_length,
+      n_objects=episode_length,
       scale=reward_scale,
       seed=self._random.randint(2**32),
       params=reward_params,
@@ -274,9 +274,9 @@ class StackEnv(gym.Env):
     self._sim.reset(self._episode_list.pop())
     if self._gui:
       self._sim.resetDebugVisualizerCamera(
-        self._obs.size[2], 
-        90, 
-        -75, 
+        np.sqrt((self._obs.size[0])**2 + (self._obs.size[1])**2 + self._obs.size[2]**2), 
+        45, 
+        -30, 
         (self._obs.size[0]/2,self._obs.size[1]/2,0),
       )
     # Reset rewarder.
@@ -512,7 +512,12 @@ class TestStackEnv(StackEnv):
     self._update_spaces()
     # Compute reward.
     reward = self._rew()
-    return self.observation, reward, self._done, {}
+    if not np.isscalar(reward):
+      info = reward
+      reward = None
+    else:
+      info = {} 
+    return self.observation, reward, self._done, info
 
   def reset(self):
     # Get episode's list of urdfs
@@ -527,6 +532,15 @@ class TestStackEnv(StackEnv):
     else:
       self._sim.reset(episode_list.pop())
       self._episode_list = episode_list
+
+    if self._gui:
+      self._sim.resetDebugVisualizerCamera(
+        np.sqrt((self._obs.size[0])**2 + (self._obs.size[1])**2 + self._obs.size[2]**2), 
+        45, 
+        -30, 
+        (self._obs.size[0]/2,self._obs.size[1]/2,0),
+      )
+
     # Reset rewarder.
     self._rew.reset()
     # Get first observation.

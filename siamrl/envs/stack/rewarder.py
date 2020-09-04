@@ -4,8 +4,9 @@ from siamrl.envs.stack.simulator import Simulator
 from siamrl.envs.stack.observer import Observer
 
 class Rewarder(object):
-  metrics = ['IoU', 'OR', 'DIoU', 'DOR', 'all']
+  metrics = ['IoU', 'OR', 'DIoU', 'DOR', 'all', 'eval']
 
+  EVAL = 5
   ALL = 4
   IOU = 0
   OR = 1
@@ -19,7 +20,7 @@ class Rewarder(object):
     observer,
     metric=None,
     goal_size_ratio=0.5,
-    num_objects=76,    
+    n_objects=76,    
     scale=1.,
     params=None,
     seed=None,
@@ -39,7 +40,7 @@ class Rewarder(object):
         scalar for constant area or a tuple with (height fraction, width 
         fraction) for fixed dimensions. In the later case, goal orientation 
         is randomly choosen to be horizontal or vertical.
-      num_objects: number of objects in each episode, used for the discounted
+      n_objects: number of objects in each episode, used for the discounted
         metrics.
       scale: scalar to be multiplied by the computed reward before return.
       params: non negative exponents of the dicount for translation 
@@ -93,7 +94,7 @@ class Rewarder(object):
     self._goal_volume = 0.
 
     # Set reward scale
-    self.scale = float(scale)
+    self.scale = float(scale) if scale is not None else float(n_objects)
 
     # Memory to store previous rewards
     self._memory = np.zeros(self.ALL)
@@ -101,7 +102,7 @@ class Rewarder(object):
     # Set the random number generator
     self._random, seed = seeding.np_random(seed)
 
-    self._t = int(num_objects)
+    self._t = int(n_objects)
 
     # Set metric
     if isinstance(metric, str):
@@ -110,7 +111,7 @@ class Rewarder(object):
         if metric == name.lower():
           metric = i
     elif metric is None:
-      metric = self.DOR # default to discounted occupation
+      metric = self.IOU # default to intersection over union
 
     try:
       _=self.metrics[metric]
@@ -120,30 +121,42 @@ class Rewarder(object):
       raise ValueError('Invalid value {} for argument metric.'.format(metric))
 
     self.metric = metric
-    if self.metric in (self.DIOU, self.DOR, self.ALL):
-      # Set params of discounted occupation
-      self._pmax = max(self._obs.pixel_to_xy(self._obs.shape[1]))
-      self._omax = np.pi
 
-      if params is None:
-        self._pexp, self._oexp = None, None
-      elif np.isscalar(params):
-        if params < 0:
-          raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
-        self._pexp, self._oexp = params, params
-      elif len(params) == 1:
-        if params[0] < 0:
-          raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
-        self._pexp, self._oexp = params*2
-      elif len(params) >= 2:
-        if params[0] < 0 or params[1] < 0:
-          raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
-        self._pexp, self._oexp = params[:2]
+    # Set params of discounted occupation
+    self._pmax = max(self._obs.pixel_to_xy(self._obs.shape[1]))
+    self._omax = np.pi
+
+    if params is None:
+      self._pexp, self._oexp = None, None
+    elif np.isscalar(params):
+      if params < 0:
+        raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
+      self._pexp, self._oexp = params, params
+    elif len(params) == 1:
+      if params[0] < 0:
+        raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
+      self._pexp, self._oexp = params*2
+    elif len(params) >= 2:
+      if params[0] < 0 or params[1] < 0:
+        raise ValueError("Invalid value {} for argument params. Must be non negative.".format(params))
+      self._pexp, self._oexp = params[:2]
 
   def __call__(self):
     """Returns the scaled reward"""
-    if self.metric == self.ALL:
-      return {k:self.call(i) for i,k in enumerate(self.metrics[:-1])}
+    
+    if self.metric == self.EVAL:
+      d,n = self._discounted(intersection=False)
+      
+      r = d/n - self._memory[-1]
+      self._memory[-1] = d/n
+
+      return {
+        self.metrics[self.IOU]: self.call(self.IOU),
+        'AD': r,
+      }
+
+    elif self.metric == self.ALL:
+      return {k:self.call(i) for i,k in enumerate(self.metrics[:-2])}
     else:
       return self.call()
 
@@ -244,32 +257,41 @@ class Rewarder(object):
     self._goal_volume = np.sum(self._goal)
     self._goal_bin = self._goal != 0
 
-  def _discounted(self):
+  def _discount(self, perr, oerr):
+    r = 1.
+    if self._pexp is not None:
+      r *= max(0.,
+        ( 1 - (perr/self._pmax)**self._pexp) )
+    if self._oexp is not None:
+      r *= max(0.,
+        ( 1 - (oerr/self._omax)**self._oexp) )
+    return r
+
+  def _discounted(self, intersection=True):
     """Returns the discounted intersection metric."""
     reward = 0.
-    nout = 0
+    n = 0
     for p, (perr,oerr) in zip(self._sim.positions, self._sim.distances_from_place):
-      # Get position in pixels
-      u,v = self._obs.xy_to_pixel(p[:2])
-      # Check if it's inside goal
-      if (
-        u >= self._goal_lims[0][0] and 
-        v >= self._goal_lims[0][1] and 
-        u < self._goal_lims[1][0] and
-        v < self._goal_lims[1][1]
-      ):
-        r = 1.
-        if self._pexp is not None:
-          r *= max(0.,
-            ( 1 - (perr/self._pmax)**self._pexp) )
-        if self._oexp is not None:
-          r *= max(0.,
-            ( 1 - (oerr/self._omax)**self._oexp) )
-        reward += r
+      if intersection:
+        # Get position in pixels
+        u,v = self._obs.xy_to_pixel(p[:2])
+        
+        # Check if it's inside goal
+        if (
+          u >= self._goal_lims[0][0] and 
+          v >= self._goal_lims[0][1] and 
+          u < self._goal_lims[1][0] and
+          v < self._goal_lims[1][1]
+        ):
+          reward += self._discount(perr, oerr)
+        else:
+          n += 1
       else:
-        nout += 1
+        reward += self._discount(perr, oerr)
+        n += 1
 
-    return reward, nout
+
+    return reward, n
 
   def _intersection(self):
     return np.sum(np.minimum(

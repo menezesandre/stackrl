@@ -174,7 +174,7 @@ class Simulator(object):
       baseVisualShapeIndex=self.createVisualShape(
         pb.GEOM_BOX,
         halfExtents=[10,10,0],
-        rgbaColor=[0.5,0.5,0.5,0.1]
+        rgbaColor=[0.9,0.9,0.9,0.1]
       )
     )
 
