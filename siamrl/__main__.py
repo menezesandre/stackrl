@@ -85,7 +85,7 @@ def test(args):
           path, 
           i, 
           value=True, 
-          verbose=args.verbose,
+          # verbose=args.verbose,
         )
   if args.baselines:
     baseline_args = {k:v for k,v in args.baseline_args} if args.baseline_args else {}
@@ -178,28 +178,28 @@ def generate(args):
       if args.verbose:
         print('{}: {}/{} done.'.format(datetime.now(), (i+1)*n_i, args.number))
 
-    if n_test:
-      seed = args.seed+1 if args.seed is not None else None 
-      siamrl.envs.data.generate(
-        n=n_i, 
-        name=str(int(100*irr)), 
-        align_pai=args.align_pai, 
-        directory=os.path.join(directory, 'test'), 
-        seed=seed,
-        show=args.show, 
-        irregularity=irr,
-        extents=args.extents,
-      )
+      if n_test:
+        seed = args.seed+1 if args.seed is not None else None 
+        siamrl.envs.data.generate(
+          n=n_i, 
+          name=str(int(100*irr)), 
+          align_pai=args.align_pai, 
+          directory=os.path.join(directory, 'test'), 
+          seed=seed,
+          show=args.show, 
+          irregularity=irr,
+          extents=args.extents,
+        )
 
-    if args.verbose:
-      etime = time.perf_counter() - itime
-      print('{}: {}/{} done. Total elapsed time: {} s ({} s/object)'.format(
-        datetime.now(),
-        args.number,
-        args.number,
-        etime, 
-        etime/(args.number or 1),
-      ))
+      if args.verbose:
+        etime = time.perf_counter() - itime
+        print('{}: {}/{} done. Total elapsed time: {} s ({} s/object)'.format(
+          datetime.now(),
+          args.number,
+          args.number,
+          etime, 
+          etime/(args.number or 1),
+        ))
   
   if args.plot or args.plot_previous:
     if plt is None:
@@ -211,8 +211,10 @@ def generate(args):
     if not os.path.isdir(plot_dir):
       os.makedirs(plot_dir)
 
-    data = defaultdict(lambda: defaultdict(lambda: list()))
+    # data = defaultdict(lambda: defaultdict(lambda: list()))
     values = defaultdict(lambda: np.array([]))
+
+    vdata = defaultdict(lambda: list())
 
     if args.plot_previous:
       fnames = siamrl.envs.data.matching(
@@ -237,30 +239,32 @@ def generate(args):
         np.loadtxt(fname, delimiter=',', skiprows=1, unpack=True)
       ):
         if k not in ['Name', 'NumVertices']:
-          data[k]['mean'].append(v.mean())
-          data[k]['std'].append(v.std())
-          data[k]['min'].append(v.min())
-          data[k]['max'].append(v.max())
+          # data[k]['mean'].append(v.mean())
+          # data[k]['std'].append(v.std())
+          # data[k]['min'].append(v.min())
+          # data[k]['max'].append(v.max())
           values[k] = np.concatenate([values[k], v])
+          vdata[k].append(v)
       values['Irregularity'] = np.concatenate([values['Irregularity'], i*np.ones_like(v)])
-
+      vdata['Irregularity'].append(i)
       if i==0:
         volume_ref = values['Volume'][-1]
 
-    for k in data['Volume']:
-      data['Volume'][k] = np.divide(data['Volume'][k], volume_ref) 
+    # for k in data['Volume']:
+    #   data['Volume'][k] = np.divide(data['Volume'][k], volume_ref) 
+    for i in range(len(vdata['Volume'])):
+      vdata['Volume'][i] /= volume_ref
 
     _, axs = plt.subplots(3, 1, sharex=True)
 
-    for ax, k in zip(axs, data):
-
-      ax.errorbar(irregularity, data[k]['mean'], yerr=(np.subtract(data[k]['mean'],data[k]['min']), np.subtract(data[k]['max'],data[k]['mean'])), fmt='none', ecolor='b', elinewidth=8, alpha=0.25, label='Range')
-      ax.errorbar(irregularity, data[k]['mean'], yerr=data[k]['std'], fmt='bo', capsize=4, label='Mean +/- std dev')
-
+    for ax, k in zip(axs, vdata):
+      if k != 'Irregularity':
+        ax.violinplot(vdata[k], vdata['Irregularity'], widths=0.04)
+      
+      ax.grid(linestyle=':')
       ax.set_ylabel(k if k != 'AspectRatio' else 'Aspect ratio')
 
     axs[-1].set_xlabel('Irregularity')
-    plt.legend(loc='best')
 
     plt.savefig(os.path.join(plot_dir, 'irregularity.pdf'))
     plt.savefig(os.path.join(plot_dir, 'irregularity.png'))
@@ -283,7 +287,7 @@ def generate(args):
 
     fig = plt.figure(constrained_layout=True)
     ax = fig.add_subplot(111, projection='3d')
-    scatter = ax.scatter(values['AspectRatio'], values['Volume']/volume_ref, values['Rectangularity'], marker='.', c=values['Irregularity'])
+    scatter = ax.scatter(values['AspectRatio'], values['Volume']/volume_ref, values['Rectangularity'], s=1, marker='+', c=values['Irregularity'])
     ax.set_ylabel('Volume')
     ax.set_zlabel('Rectangularity')
     ax.set_xlabel('Aspect ratio')

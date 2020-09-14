@@ -198,9 +198,10 @@ def _plot(fname, x_key, y_keys, smooth=0, split=None, baselines=None, show=False
   if baselines or ys_std:
     plt.legend(loc='best')
 
-  if clip:
-    for ax, key, y in zip(axs, y_keys, ys):
-      ax.set_ylabel(key)
+  for ax, key, y in zip(axs, y_keys, ys):
+    ax.set_ylabel(key)
+    ax.grid(linestyle=':')
+    if clip:
       ylim = ax.get_ylim()
       _mean = np.mean(y)
       _std = np.std(y)
@@ -252,6 +253,7 @@ def plot_value(path, show=False, save_as=None, **kwargs):
   plt.legend(['mean', 'std dev', 'range'])
   plt.xlabel('Iter')
   plt.ylabel('Q value')
+  plt.grid(linestyle=':')
 
   if save_as:
     plt.savefig(save_as)

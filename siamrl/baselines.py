@@ -210,9 +210,9 @@ class Baseline(agents.PyGreedy):
         )
 
         if np.any(minima):
-          return np.argmin(np.where(minima, values, np.inf)), -values
+          return np.argmin(np.where(minima, values, np.inf)), -np.where(mask, values, values[mask].max()+0.001)
 
-      return np.argmin(np.where(mask, values, np.inf)), -values
+      return np.argmin(np.where(mask, values, np.inf)), -np.where(mask, values, values[mask].max()+0.001)
     else:
       return np.argmin(values), -values
 

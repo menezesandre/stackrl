@@ -189,7 +189,7 @@ class Observer(object):
       self._object_view = obj_view
     elif object_pose is None and len(up_vectors) == 1:
       self._up_vectors = None
-      self._object_orientations = []
+      self._object_orientations = None
       self._object_indexes = []
 
       def obj_view(pose):
@@ -245,12 +245,6 @@ class Observer(object):
         (self._object_h, self._object_w), 
         dtype='float32'
       )
-
-    # For visualization
-    if hasattr(simulator, 'draw_rectangle'):
-      self._visualize = lambda: simulator.draw_rectangle(self.size)
-    else:
-      self._visualize = None
 
   def __call__(self):
     """Get new depth images and convert to elevation maps"""
@@ -426,7 +420,8 @@ class Observer(object):
         ret['index'] = self._object_indexes[index]
     return ret
 
-  def visualize(self):
+  def visualize(self, **kwargs):
     """Visualize the observable space on the simulator."""
-    if self._visualize:
-      return self._visualize()
+    if hasattr(self._sim, 'draw_rectangle'):
+      self._sim.draw_rectangle(self.size, **kwargs)
+

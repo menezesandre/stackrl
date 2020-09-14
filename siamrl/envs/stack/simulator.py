@@ -174,7 +174,7 @@ class Simulator(object):
       baseVisualShapeIndex=self.createVisualShape(
         pb.GEOM_BOX,
         halfExtents=[10,10,0],
-        rgbaColor=[0.9,0.9,0.9,0.1]
+        rgbaColor=[0.8,0.8,0.8,0.1]
       )
     )
 
@@ -265,23 +265,31 @@ class Simulator(object):
     except:
       return False
 
-  def draw_rectangle(self, size, offset=(0, 0), rgb=(1, 1, 1)):
+  def draw_rectangle(self, size, offset=(0, 0), rgba=None, height=0):
     """Create a visual rectangle on the ground plane.
     Args:
       size:  size [length, width] of the rectangle.
       offset: coordinates [x, y] of the corner with lowest coordinates of 
         the rectangle.
-      rgba: color [red, green, blue] of the rectangle.
+      height: to extrude the rectangle.
+      rgba: color [red, green, blue, (alpha)] of the rectangle (alpha
+        is optional, defaults to 0.5).
     """
-    rgba = tuple(rgb) + (0.5,)
-
+    if rgba is None:
+      rgba = (1,1,1,0.5)
+    else:
+      rgba = tuple(rgba)
+      if len(rgba) == 3:
+        rgba += (0.5,)
+      elif len(rgba) != 4:
+        raise ValueError("Invalid value {} for argument rgba".format(rgba))
     return self.createMultiBody(
       0,
       baseVisualShapeIndex=self.createVisualShape(
         pb.GEOM_BOX,
-        halfExtents=(size[0]/2, size[1]/2, 0),
+        halfExtents=(size[0]/2, size[1]/2, height/2),
         rgbaColor=rgba,
-        visualFramePosition=(size[0]/2, size[1]/2, 0)
+        visualFramePosition=(size[0]/2, size[1]/2, height/2)
       ),
       basePosition=(offset[0], offset[1], 0),
     )

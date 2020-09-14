@@ -352,6 +352,63 @@ def run(
     'episode_bounds': episode_bounds,
   }
 
+def analyse_correlation(
+  keys, 
+  actions, 
+  values, 
+  rewards, 
+  episode_bounds, 
+  show=False, 
+  save=None, 
+  dirname='.'
+):
+  num_policies = keys.size
+  num_steps = rewards.shape[-1]
+  total_num_steps = values.shape[1]
+
+  # Check if episode length is constant
+  if np.all(
+    episode_bounds == 
+    np.arange(0, total_num_steps+1, total_num_steps/(episode_bounds.size - 1))
+  ):
+    episode_length = int(total_num_steps/(episode_bounds.size - 1))
+    # Episode returns
+    returns = rewards.reshape((num_policies, -1, episode_length)).sum(axis=-1)
+  else:
+    episode_length = None
+    # Compute episode returns with known rewards and episode boundaries
+    returns = [list() for _ in range(keys.size)]
+    for i in range(len(episode_bounds)-1):
+      start,end = episode_bounds[i:i+2]
+      delta = end-start
+      j = start//num_steps
+      start = start%num_steps
+      returns[j].append(rewards[j,start:start+delta].sum())
+    returns = np.array(returns)
+
+  # Returns distribution
+  returns_mean = returns.mean(axis=-1)
+  returns_std = returns.std(axis=-1)
+
+  # Action values (max value for each step)
+  action_values = values.max(axis=-1)
+
+  action_value = action_values.mean(axis=-1)
+  action_value_std = action_values.std(axis=-1)
+
+  corrcoefs = np.corrcoef(values.reshape((num_policies, -1)))
+  print(corrcoefs)
+  np.save(siamrl.datapath('others', 'corrcoefs'), corrcoefs)
+
+  return {
+    'keys':keys,
+    'return':returns_mean,
+    'return_std':returns_std,
+    'action_value':action_value,
+    'action_value_std':action_value_std,
+  }
+
+
 def analyse(
   keys, 
   actions, 

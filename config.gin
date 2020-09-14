@@ -1,14 +1,14 @@
 # Set environment parameters
 
 # envs.make.env='Stack-v0'
-# envs.make.n_parallel=None
+envs.make.n_parallel=2
 
-# envs.make.episode_length=40
-# envs.make.urdfs=None
+# envs.make.episode_length=30
+# envs.make.urdfs='[5-9]?'
 # envs.make.object_max_dimension=0.125
 # envs.make.use_gui=False
 # envs.make.simulator=None
-# envs.make.sim_time_step=1/100.
+envs.make.sim_time_step=.0125
 # envs.make.gravity=9.8
 # envs.make.num_sim_steps=None
 # envs.make.velocity_threshold=0.01
@@ -16,10 +16,10 @@
 # envs.make.observer=None
 # envs.make.observable_size_ratio=4
 # envs.make.resolution_factor=5
-# envs.make.max_z=0.375
-# envs.make.rewarder=None
+# envs.make.max_z=1
+envs.make.rewarder='dor'
 # envs.make.goal_size_ratio=.25
-# envs.make.reward_scale=1.
+envs.make.reward_scale=None
 # envs.make.reward_params=None
 # envs.make.flat_action=True
 # envs.make.dtype='float32'
@@ -29,6 +29,9 @@
 # eval/envs.make.episode_length = 40
 # eval/envs.make.urdfs = 50
 # eval/envs.make.curriculum = None
+eval/envs.make.rewarder='iou'
+eval/envs.make.reward_scale=1.
+eval/envs.make.sim_time_step=0.01
 
 # Set network parameters
 
@@ -49,9 +52,11 @@
 # nets.pos_layers.filters=32
 # nets.pos_layers.depth=2
 
-# nets.PseudoSiamFCN.left_layers = @left/nets.sequential
-# nets.PseudoSiamFCN.right_layers = @right/nets.sequential
-# nets.PseudoSiamFCN.pos_layers = @nets.pos_layers
+nets.DeepQSiamFCN.left_filters = 16
+nets.DeepQSiamFCN.dueling = True
+nets.DeepQSiamFCN.dueling_units = 256
+# nets.DeepQSiamFCN.corr_channels = 16
+nets.DeepQSiamFCN.pos_filters = 16
 
 # Schedules
 
@@ -65,31 +70,46 @@
 # schedules.PolynomialDecay.end_learning_rate = 0.0001
 # schedules.PolynomialDecay.power = 1.0
 
+exploration/schedules.PolynomialDecay.initial_learning_rate = 1.0
+exploration/schedules.PolynomialDecay.decay_steps = 400000
+exploration/schedules.PolynomialDecay.end_learning_rate = .1
+exploration/schedules.PolynomialDecay.power = 1.0
+
+beta/schedules.PolynomialDecay.initial_learning_rate = 0.4
+beta/schedules.PolynomialDecay.decay_steps = 400000
+beta/schedules.PolynomialDecay.end_learning_rate = 1.0
+beta/schedules.PolynomialDecay.power = 1.0
+
+# lr/schedules.PolynomialDecay.initial_learning_rate = 0.00025
+# lr/schedules.PolynomialDecay.decay_steps = 400000
+# lr/schedules.PolynomialDecay.end_learning_rate = 0.0000625
+# lr/schedules.PolynomialDecay.power = 2.0
+
 # Set optimizer parameters
 
-# optimizers.Adam.learning_rate = 0.001
+optimizers.Adam.learning_rate = 0.0000625
 # optimizers.Adam.learning_rate = @lr/tf.keras.optimizers.schedules.ExponentialDecay()
-# optimizers.Adam.beta_1 = 0.9
-# optimizers.Adam.beta_2 = 0.999
+optimizers.Adam.beta_1 = 0.95
+optimizers.Adam.beta_2 = 0.95
 # optimizers.Adam.epsilon = 0.0000001
 # optimizers.Adam.amsgrad = False
 
 # Set agent parameters
 
-# agents.DQN.optimizer=None
+agents.DQN.optimizer=@optimizers.Adam
 # agents.DQN.learning_rate=None
 # agents.DQN.huber_delta=1.
 # agents.DQN.minibatch_size=32
-# agents.DQN.replay_memory_size=100000
-# agents.DQN.prefetch=None
+agents.DQN.replay_memory_size=400000
+agents.DQN.prefetch=3
 # agents.DQN.target_update_period=10000
 # agents.DQN.reward_scale=None
-# agents.DQN.discount_factor=.99
+agents.DQN.discount_factor=.966667
 # agents.DQN.collect_batch_size=None
-# agents.DQN.exploration=0.1
-# agents.DQN.prioritization=None
-# agents.DQN.priority_bias_compensation=None
-# agents.DQN.double=False
+agents.DQN.exploration=@exploration/schedules.PolynomialDecay()
+agents.DQN.prioritization=0.6
+agents.DQN.priority_bias_compensation=@beta/schedules.PolynomialDecay()
+agents.DQN.double=True
 # agents.DQN.n_step=None
 # agents.DQN.graph=True
 
@@ -99,21 +119,26 @@
 
 # Set training parameters
 
-# siamrl.Training.env = @envs.make
-# siamrl.Training.eval_env = @eval/envs.make
+siamrl.Training.env = @envs.make
+siamrl.Training.eval_env = @eval/envs.make
+siamrl.Training.net = @nets.DeepQSiamFCN
+siamrl.Training.agent = @agents.DQN
+siamrl.Training.train_reward_buffer_length = 200
+siamrl.Training.eval_reward_buffer_length = 100
 # siamrl.Training.net = @nets.PseudoSiamFCN
 # siamrl.Training.agent = @agents.DQN
 # siamrl.Training.train_reward_buffer_length = 10
 # siamrl.Training.eval_reward_buffer_length = 10
 # siamrl.Training.directory = '.'
-# siamrl.Training.save_evaluated_policies = False
+siamrl.Training.save_evaluated_policies = True
 # siamrl.Training.log_to_file = True
 # siamrl.Training.log_interval = 100
 # siamrl.Training.eval_interval = 10000
-# siamrl.Training.checkpoint_interval = 10000
-# siamrl.Training.goal_check_interval = 1000
+siamrl.Training.checkpoint_interval = 1000000
+# siamrl.Training.goal_check_interval = 5
+siamrl.Training.seed = 1
 
-# siamrl.Training.initialize.num_steps = None
+siamrl.Training.initialize.num_steps = 10000
 # siamrl.Training.initialize.policy = @initialize/siamrl.Baseline()
 
 # siamrl.Training.run.max_num_iters = 1000000

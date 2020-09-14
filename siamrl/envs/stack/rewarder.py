@@ -154,7 +154,6 @@ class Rewarder(object):
         self.metrics[self.IOU]: self.call(self.IOU),
         'AD': r,
       }
-
     elif self.metric == self.ALL:
       return {k:self.call(i) for i,k in enumerate(self.metrics[:-2])}
     else:
@@ -200,12 +199,14 @@ class Rewarder(object):
     self._random.seed(seed)
     return [seed]
 
-  def visualize(self):
+  def visualize(self, **kwargs):
     """Visualize the target as a green rectangle in the
     simulator"""
     size = self._obs.pixel_to_xy(np.subtract(self._goal_lims[1], self._goal_lims[0]))
     offset = self._obs.pixel_to_xy(self._goal_lims[0])
-    return self._sim.draw_rectangle(size, offset, (0,1,0)) # Green rectangle
+    if not 'rgba' in kwargs:
+      kwargs['rgba'] = (0,1,0)
+    return self._sim.draw_rectangle(size, offset, **kwargs) # Green rectangle
 
   def _reset_goal(self):
     """Create new goal"""

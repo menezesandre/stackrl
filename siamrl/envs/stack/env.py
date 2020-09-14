@@ -276,7 +276,7 @@ class StackEnv(gym.Env):
       self._sim.resetDebugVisualizerCamera(
         np.sqrt((self._obs.size[0])**2 + (self._obs.size[1])**2 + self._obs.size[2]**2), 
         45, 
-        -30, 
+        -45, 
         (self._obs.size[0]/2,self._obs.size[1]/2,0),
       )
     # Reset rewarder.
@@ -537,7 +537,7 @@ class TestStackEnv(StackEnv):
       self._sim.resetDebugVisualizerCamera(
         np.sqrt((self._obs.size[0])**2 + (self._obs.size[1])**2 + self._obs.size[2]**2), 
         45, 
-        -30, 
+        -45, 
         (self._obs.size[0]/2,self._obs.size[1]/2,0),
       )
 
