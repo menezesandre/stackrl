@@ -34,7 +34,7 @@ class Rewarder(object):
       metric: metric used to compute the rewards. One of 'IoU', 'OR', 
         'DIoU', 'DOR' or 'all' (case insensitive), or an integer index 
         from 0 to 4. If 'all', a dictionary with the four metrics is 
-        returned. None defaults to 'DOR'.
+        returned. None defaults to 'IoU'.
       goal_size_ratio: size of the goal, given in fractions of the 
         observed space. Either None for completely random dimensions, a 
         scalar for constant area or a tuple with (height fraction, width 
