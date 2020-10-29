@@ -17,7 +17,7 @@ def kernel_initializer_generator(kernel_initializer=None, seed=None):
     config['seed'] = r.randint(0,2**32-1)
     yield kernel_initializer.from_config(config)
 
-@gin.configurable(module='siamrl.nets')
+@gin.configurable(module='stackrl.nets')
 def correlation(in0, in1, parallel_iterations=None):
   """Aplies the correlation layer to inputs tensors"""
   
@@ -37,7 +37,7 @@ def correlation(in0, in1, parallel_iterations=None):
   )
   )((in0,in1))
 
-@gin.configurable(module='siamrl.nets')
+@gin.configurable(module='stackrl.nets')
 def sequential(
   inputs, 
   layers, 
@@ -131,7 +131,7 @@ def sequential(
     )(x)
   return x
 
-@gin.configurable(module='siamrl.nets')
+@gin.configurable(module='stackrl.nets')
 def unet(
   inputs, 
   depth=3,
@@ -258,7 +258,7 @@ def unet(
 
   return x
 
-@gin.configurable(module='siamrl.nets')
+@gin.configurable(module='stackrl.nets')
 def mobile_unet(
   inputs, 
   depth=3,
@@ -435,7 +435,7 @@ def value(inputs, avg=True, units=512, depth=1, kernel_initializer=None, seed=No
     x = k.layers.Dense(units, activation='relu', kernel_initializer=next(kernel_initializer))(x)
   return k.layers.Dense(1, kernel_initializer=next(kernel_initializer))(x)
 
-@gin.configurable(module='siamrl.nets')
+@gin.configurable(module='stackrl.nets')
 def pos_layers(
   inputs,
   filters=32,

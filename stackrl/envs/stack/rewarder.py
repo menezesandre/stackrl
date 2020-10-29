@@ -1,7 +1,7 @@
 import numpy as np
 from gym.utils import seeding
-from siamrl.envs.stack.simulator import Simulator
-from siamrl.envs.stack.observer import Observer
+from stackrl.envs.stack.simulator import Simulator
+from stackrl.envs.stack.observer import Observer
 
 class Rewarder(object):
   metrics = ['IoU', 'OR', 'DIoU', 'DOR', 'all', 'eval']

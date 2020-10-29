@@ -1,15 +1,15 @@
 import os as _os
 
-from siamrl import agents
-from siamrl import baselines
-from siamrl import envs
-from siamrl import external_configurables
-from siamrl import nets
-from siamrl import test
-from siamrl import train
+from stackrl import agents
+from stackrl import baselines
+from stackrl import envs
+from stackrl import external_configurables
+from stackrl import nets
+from stackrl import test
+from stackrl import train
 
-from siamrl.baselines import Baseline
-from siamrl.train import Training
+from stackrl.baselines import Baseline
+from stackrl.train import Training
 
 MAJOR_VERSION = 1
 MINOR_VERSION = 0

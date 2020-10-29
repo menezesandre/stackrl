@@ -15,8 +15,8 @@ try:
 except :
   cv = None
 
-# from siamrl import envs
-from siamrl import agents
+# from stackrl import envs
+from stackrl import agents
 
 def get_inputs(inputs, mask=None):
   """Extract and normalize the arrays from inputs"""
@@ -164,7 +164,7 @@ methods = {
   # 'gradcorr':gradcorr,
 }
 
-@gin.configurable(module='siamrl')
+@gin.configurable(module='stackrl')
 class Baseline(agents.PyGreedy):
   def __init__(
     self, 
@@ -546,7 +546,7 @@ if False:
     'gradcorr': gradcorr
   }
 
-  # @gin.configurable(module='siamrl')
+  # @gin.configurable(module='stackrl')
   class _Baseline(agents.PyGreedy):
     def __init__(
       self, 

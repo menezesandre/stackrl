@@ -6,10 +6,10 @@ import random
 
 import gin
 import tensorflow as tf
-from siamrl.nets import layers
+from stackrl.nets import layers
 
 
-@gin.configurable(module='siamrl.nets')
+@gin.configurable(module='stackrl.nets')
 class PseudoSiamFCN(tf.keras.Model):
   def __init__(
     self,
@@ -102,7 +102,7 @@ class PseudoSiamFCN(tf.keras.Model):
       name=name
     )
 
-@gin.configurable(module='siamrl.nets')
+@gin.configurable(module='stackrl.nets')
 class DeepQSiamFCN(tf.keras.Model):
   def __init__(
     self,

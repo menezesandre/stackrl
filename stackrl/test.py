@@ -17,10 +17,10 @@ try:
 except ImportError:
   ndimage = None
 
-import siamrl
-from siamrl import envs
+import stackrl
+from stackrl import envs
 try:
-  from siamrl import heatmap
+  from stackrl import heatmap
 except ImportError:
   heatmap = None
 
@@ -30,7 +30,7 @@ def clean(path=None, extensions='.npz'):
   """Remove all files with extension accessible from root path.
   Returns:
     list off all the removed files."""
-  path = path or siamrl.datapath('test')
+  path = path or stackrl.datapath('test')
   removed = []
 
   if os.path.isfile(path):
@@ -398,7 +398,7 @@ def analyse_correlation(
 
   corrcoefs = np.corrcoef(values.reshape((num_policies, -1)))
   print(corrcoefs)
-  np.save(siamrl.datapath('others', 'corrcoefs'), corrcoefs)
+  np.save(stackrl.datapath('others', 'corrcoefs'), corrcoefs)
 
   return {
     'keys':keys,
@@ -761,7 +761,7 @@ def test(
   if isinstance(save, str):
     basedirname = save
   else:
-    basedirname = siamrl.datapath('test')
+    basedirname = stackrl.datapath('test')
   timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
   # Only save results if policies are named  
   save_results = save_results and isinstance(policies, dict)

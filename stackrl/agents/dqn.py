@@ -13,9 +13,9 @@ import gin
 import tensorflow as tf
 from tensorflow import keras as k
 
-from siamrl.agents.memory import ReplayMemory
+from stackrl.agents.memory import ReplayMemory
 
-@gin.configurable(module='siamrl.agents')
+@gin.configurable(module='stackrl.agents')
 class DQN(tf.Module):
   """DQN agent [1]"""
   # pylint is messing up with tf...

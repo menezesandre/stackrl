@@ -1,4 +1,4 @@
-from siamrl.envs.stack.env import register
+from stackrl.envs.stack.env import register
 
 # Stack-v0
 register(

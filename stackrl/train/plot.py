@@ -4,8 +4,8 @@ import os
 import gin
 import numpy as np
 
-import siamrl
-from siamrl import envs
+import stackrl
+from stackrl import envs
 try:
   import matplotlib.pyplot as plt
 except ImportError:
@@ -313,7 +313,7 @@ def plot_eval(path, value=False, baselines=['random', 'ccoeff'], **kwargs):
 
     if envpath is not None:
       # Get full path to results file for that env
-      rfname = siamrl.datapath(
+      rfname = stackrl.datapath(
         'test',
         envpath,
         'results.csv',
@@ -331,8 +331,8 @@ def plot_eval(path, value=False, baselines=['random', 'ccoeff'], **kwargs):
         # Get results for the missing baselines
         get_results = [k for k in baselines if k not in results]
         with gin.config_scope('eval'):
-          siamrl.test.test(
-            policies = {k:siamrl.Baseline(method=k, value=True) for k in get_results},
+          stackrl.test.test(
+            policies = {k:stackrl.Baseline(method=k, value=True) for k in get_results},
             verbose=False,
           )
         new_results = read_csv(rfname, columns=['Keys', 'Return'])
@@ -368,7 +368,7 @@ def plot(path, value=False, baselines=None, **kwargs):
       plot_value(path, **kwargs)
   except FileNotFoundError as e:
     # If files don't exist in given path, use it as relative from Siam-RL/data/train
-    if path.startswith(siamrl.datapath('train')):
+    if path.startswith(stackrl.datapath('train')):
       raise e
     else:
-      return plot(siamrl.datapath('train', path), value=value, baselines=baselines, **kwargs)
+      return plot(stackrl.datapath('train', path), value=value, baselines=baselines, **kwargs)

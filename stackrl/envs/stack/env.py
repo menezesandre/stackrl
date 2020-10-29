@@ -6,11 +6,11 @@ from gym.envs import registry
 from gym.utils import seeding
 import numpy as np
 
-from siamrl.envs import data
-from siamrl.envs.stack.simulator import Simulator, TestSimulator
-from siamrl.envs.stack.observer import Observer
-from siamrl.envs.stack.rewarder import Rewarder
-# from siamrl.baselines import Baseline
+from stackrl.envs import data
+from stackrl.envs.stack.simulator import Simulator, TestSimulator
+from stackrl.envs.stack.observer import Observer
+from stackrl.envs.stack.rewarder import Rewarder
+# from stackrl.baselines import Baseline
 
 try:
   import matplotlib.pyplot as plt
@@ -55,7 +55,7 @@ class StackEnv(gym.Env):
       number of objects used on each episode).
       urdfs: list of files (urdf format) that describe the objects to be 
         used on the environment. A name string can be provided to use 
-        objects from the 'siamrl/envs/data/generated' directory. On each 
+        objects from the 'stackrl/envs/data/generated' directory. On each 
         episode, a fixed number of files is randomly choosen from this 
         list.
       object_max_dimension: maximum dimension of all objects in the list.
@@ -365,7 +365,7 @@ class StartedStackEnv(StackEnv):
         of remaining objects makes the episode length.
       start_policy: policy used to place the initial number of objects at
         the beggining of an episode. Either a string identifying one of 
-        the policies implemented in siamrl.baselines or a callable 
+        the policies implemented in stackrl.baselines or a callable 
         implementing the policy. If None, defaults to 'ccoeff' baseline
         if opencv-python is installed, 'random' otherwise.
       flat_action: whether to receive action as a flat index or a pair of

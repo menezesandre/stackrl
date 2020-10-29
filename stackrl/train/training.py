@@ -9,12 +9,12 @@ import gin
 import numpy as np
 import tensorflow as tf
 
-from siamrl import agents
-from siamrl import envs
-from siamrl import metrics
-from siamrl import nets
+from stackrl import agents
+from stackrl import envs
+from stackrl import metrics
+from stackrl import nets
 
-@gin.configurable(module='siamrl')
+@gin.configurable(module='stackrl')
 class Training(object):
   """Implements the DQN training routine"""
   def __init__(
@@ -229,7 +229,7 @@ class Training(object):
     else:
       return False
 
-  @gin.configurable(module='siamrl.Training')
+  @gin.configurable(module='stackrl.Training')
   def initialize(
     self,
     num_steps=None, 
@@ -296,7 +296,7 @@ class Training(object):
       raise e
 
 
-  @gin.configurable(module='siamrl.Training')
+  @gin.configurable(module='stackrl.Training')
   def run(
     self,
     max_num_iters=sys.maxsize,

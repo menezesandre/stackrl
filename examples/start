@@ -52,4 +52,4 @@ else
   fi
 fi
 
-eval "docker run $GPU $MODE --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/siamrl$TAG python -m siamrl train -c -d ./tmp$REDIRECT"
+eval "docker run $GPU $MODE --rm -u $(id -u):$(id -g) -v $DIR:/home/tmp -w /home atmenezes/stackrl$TAG python -m stackrl train -c -d ./tmp$REDIRECT"

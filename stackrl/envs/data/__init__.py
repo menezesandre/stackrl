@@ -2,7 +2,7 @@ import glob
 import os
 
 try:
-  from siamrl.envs.data.generator import generate
+  from stackrl.envs.data.generator import generate
 except ImportError:
   generate = None
 
@@ -10,9 +10,9 @@ def path(*args):
   """
   Args:
     args: relative path from this directory
-      ('siamrl/envs/data').
+      ('stackrl/envs/data').
   Return:
-    The absolute path to 'siamrl/envs/data/arg0/...' or,
+    The absolute path to 'stackrl/envs/data/arg0/...' or,
     if no arg is given, to this directory.
   """
   return os.path.join(
@@ -23,7 +23,7 @@ def path(*args):
 _open = open
 def open(file, *args, **kwargs):
   """Wrapper of the built-in function open() that prepends 
-    the absolute path to 'siamrl/envs/data' to file."""
+    the absolute path to 'stackrl/envs/data' to file."""
   return _open(path(file), *args, **kwargs)
 
 def matching(*args):
@@ -31,7 +31,7 @@ def matching(*args):
   Args:
     args: relative path from this directory, including patterns.
   Return:
-    A list of the files from 'siamrl/envs/data' directory that
+    A list of the files from 'stackrl/envs/data' directory that
     match the pattern.
   """
   return glob.glob(path(*args))

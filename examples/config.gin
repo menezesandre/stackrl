@@ -95,26 +95,26 @@
 
 # Set initialize policy
 
-# initialize/siamrl.Baseline.method='lowest'
+# initialize/stackrl.Baseline.method='lowest'
 
 # Set training parameters
 
-# siamrl.Training.env = @envs.make
-# siamrl.Training.eval_env = @eval/envs.make
-# siamrl.Training.net = @nets.PseudoSiamFCN
-# siamrl.Training.agent = @agents.DQN
-# siamrl.Training.train_reward_buffer_length = 10
-# siamrl.Training.eval_reward_buffer_length = 10
-# siamrl.Training.directory = '.'
-# siamrl.Training.save_evaluated_policies = False
-# siamrl.Training.log_to_file = True
-# siamrl.Training.log_interval = 100
-# siamrl.Training.eval_interval = 10000
-# siamrl.Training.checkpoint_interval = 10000
-# siamrl.Training.goal_check_interval = 1000
+# stackrl.Training.env = @envs.make
+# stackrl.Training.eval_env = @eval/envs.make
+# stackrl.Training.net = @nets.PseudoSiamFCN
+# stackrl.Training.agent = @agents.DQN
+# stackrl.Training.train_reward_buffer_length = 10
+# stackrl.Training.eval_reward_buffer_length = 10
+# stackrl.Training.directory = '.'
+# stackrl.Training.save_evaluated_policies = False
+# stackrl.Training.log_to_file = True
+# stackrl.Training.log_interval = 100
+# stackrl.Training.eval_interval = 10000
+# stackrl.Training.checkpoint_interval = 10000
+# stackrl.Training.goal_check_interval = 1000
 
-# siamrl.Training.initialize.num_steps = None
-# siamrl.Training.initialize.policy = @initialize/siamrl.Baseline()
+# stackrl.Training.initialize.num_steps = None
+# stackrl.Training.initialize.policy = @initialize/stackrl.Baseline()
 
-# siamrl.Training.run.max_num_iters = 1000000
-# siamrl.Training.run.stop_when_complete = False
+# stackrl.Training.run.max_num_iters = 1000000
+# stackrl.Training.run.stop_when_complete = False

@@ -41,7 +41,7 @@ def get_space_spec(space, remove_first_dim=None):
 def isspace(obj):
   return isinstance(obj, gym.Space)
 
-@gin.configurable(module='siamrl.envs')
+@gin.configurable(module='stackrl.envs')
 def make(
   env='Stack-v0', 
   n_parallel=None, 
@@ -51,7 +51,7 @@ def make(
   as_path=False,
   **kwargs,
 ):
-  """Instantiate an environment wrapped to be compatible with siamrl.Training.
+  """Instantiate an environment wrapped to be compatible with stackrl.Training.
   Args:
     env: Either an instance of a gym.Env or the id of the environment on 
       the gym registry.

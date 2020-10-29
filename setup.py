@@ -3,7 +3,7 @@ import os
 
 # Read version number from package __init__.py
 version = {}
-with open(os.path.join(os.path.dirname(__file__),'siamrl', '__init__.py')) as f:
+with open(os.path.join(os.path.dirname(__file__),'stackrl', '__init__.py')) as f:
   for line in f:
     if '=' in line:
       line = line.split('=')
@@ -12,7 +12,7 @@ with open(os.path.join(os.path.dirname(__file__),'siamrl', '__init__.py')) as f:
 version = '{MAJOR_VERSION}.{MINOR_VERSION}.{PATCH_VERSION}'.format(**version)
 
 REQUIRES = [
-  'numpy',
+  'numpy>=19.0.0',
   'scipy',
   'gym', 
   'pybullet',
@@ -32,7 +32,7 @@ with open('README.md', encoding='utf-8') as f:
   long_description = f.read()
 
 setup(
-  name='siamrl',
+  name='stackrl',
   version=version,
   description='Reinforcement learning with (pseudo) siamese networks.',
   long_description=long_description,

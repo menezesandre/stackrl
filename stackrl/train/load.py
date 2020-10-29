@@ -4,10 +4,10 @@ import gin
 import numpy as np
 from tensorflow import errors
 
-import siamrl
-from siamrl import agents
-from siamrl import envs
-from siamrl import nets
+import stackrl
+from stackrl import agents
+from stackrl import envs
+from stackrl import nets
 
 def load(
   observation_spec, 
@@ -111,10 +111,10 @@ def load(
 
     return policy
   except (FileNotFoundError, errors.NotFoundError) as e:
-    if not path.startswith(siamrl.datapath('train')):
+    if not path.startswith(stackrl.datapath('train')):
       return load(
         observation_spec,
-        path=os.path.join(siamrl.datapath('train'), path),
+        path=os.path.join(stackrl.datapath('train'), path),
         iters=iters,
         config_file=config_file,
         value=value,
@@ -213,10 +213,10 @@ def load_model(
 
     return net
   except (FileNotFoundError, errors.NotFoundError) as e:
-    if not path.startswith(siamrl.datapath('train')):
+    if not path.startswith(stackrl.datapath('train')):
       return load_model(
         observation_spec,
-        path=os.path.join(siamrl.datapath('train'), path),
+        path=os.path.join(stackrl.datapath('train'), path),
         iters=iters,
         config_file=config_file,
         verbose=verbose,

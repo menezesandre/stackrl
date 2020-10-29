@@ -1,4 +1,4 @@
-"""siamrl main module."""
+"""stackrl main module."""
 import argparse
 from collections import defaultdict
 from datetime import datetime
@@ -13,7 +13,7 @@ except ImportError:
   plt = None
 import numpy as np
 
-import siamrl
+import stackrl
 
 # Main functions
 
@@ -34,18 +34,18 @@ def train(args):
   if args.env_id:
     make_args['env'] = args.env_id
   if make_args:
-    kwargs['env'] = lambda **kwa: siamrl.envs.make(**make_args, **kwa)
+    kwargs['env'] = lambda **kwa: stackrl.envs.make(**make_args, **kwa)
 
   # Run training
-  training = siamrl.Training(**kwargs)
+  training = stackrl.Training(**kwargs)
   training.run()
 
 def plot(args):
   if args.combined:
-    siamrl.train.plot(args.directory, value=args.value, baselines=args.baselines, show=args.show, clip=args.clip)
+    stackrl.train.plot(args.directory, value=args.value, baselines=args.baselines, show=args.show, clip=args.clip)
   else:
     for path in args.directory:
-      siamrl.train.plot(path, value=args.value, baselines=args.baselines, show=args.show, clip=args.clip)
+      stackrl.train.plot(path, value=args.value, baselines=args.baselines, show=args.show, clip=args.clip)
 
 def test(args):
   make_args = {k:v for k,v in args.env_args} if args.env_args else {}
@@ -65,7 +65,7 @@ def test(args):
         gin.parse_config_file(os.path.join(path,'config.gin'))
 
   # instantiate a dummy env to check specs
-  dummy_env = siamrl.envs.make(**make_args, unwrapped=True)
+  dummy_env = stackrl.envs.make(**make_args, unwrapped=True)
   if isinstance(dummy_env, types.GeneratorType):
     gen = dummy_env
     dummy_env, _ = next(gen)
@@ -80,7 +80,7 @@ def test(args):
         key = os.path.split(path)[-1]
         if i is not None:
           key += '-{}'.format(i)
-        policies[key] = siamrl.train.load(
+        policies[key] = stackrl.train.load(
           observation_space, 
           path, 
           i, 
@@ -94,7 +94,7 @@ def test(args):
     # for k,v in args.baselines:
     #   if k == 'all':
     #   baselines.pop('all')
-    #   for method in siamrl.baselines.methods:
+    #   for method in stackrl.baselines.methods:
     #     if method not in baselines:
     #       baselines[method] = {}
 
@@ -108,7 +108,7 @@ def test(args):
         i += 1
         name = method+str(i)
 
-      policies[name] = siamrl.Baseline(
+      policies[name] = stackrl.Baseline(
         method=method, 
         value=True, 
         batched=batched, 
@@ -118,7 +118,7 @@ def test(args):
   
   save = args.save_dir or args.save
 
-  siamrl.test.test(
+  stackrl.test.test(
     **make_args,
     policies=policies, 
     num_steps=args.num_steps,
@@ -131,7 +131,7 @@ def test(args):
     )
 
 def generate(args):
-  if siamrl.envs.data.generate is None:
+  if stackrl.envs.data.generate is None:
     raise ImportError('trimesh must be installed to run generate.')
   irregularity = []
   if args.irregularity:
@@ -148,12 +148,12 @@ def generate(args):
   if args.directory:
     directory = args.directory
   else:
-    directory = siamrl.envs.data.path('generated')
+    directory = stackrl.envs.data.path('generated')
     if args.clear:
-      for fname in siamrl.envs.data.matching('generated', '*'):
+      for fname in stackrl.envs.data.matching('generated', '*'):
         if os.path.isfile(fname):
           os.remove(fname)
-      for fname in siamrl.envs.data.matching('generated', 'test', '*'):
+      for fname in stackrl.envs.data.matching('generated', 'test', '*'):
         if os.path.isfile(fname):
           os.remove(fname)
 
@@ -164,7 +164,7 @@ def generate(args):
       print('{}: Generating {} objects.'.format(datetime.now(), args.number))
       itime = time.perf_counter()
     for i, irr in enumerate(irregularity):
-      siamrl.envs.data.generate(
+      stackrl.envs.data.generate(
         n=n_i, 
         name=str(int(100*irr)), 
         align_pai=args.align_pai, 
@@ -180,7 +180,7 @@ def generate(args):
 
       if n_test:
         seed = args.seed+1 if args.seed is not None else None 
-        siamrl.envs.data.generate(
+        stackrl.envs.data.generate(
           n=n_i, 
           name=str(int(100*irr)), 
           align_pai=args.align_pai, 
@@ -204,7 +204,7 @@ def generate(args):
   if args.plot or args.plot_previous:
     if plt is None:
       raise ImportError("matplotlib must be installed to run generate with --plot option.")
-    plot_dir = siamrl.datapath(
+    plot_dir = stackrl.datapath(
       'generate',
       datetime.now().strftime('%y%m%d-%H%M%S')+'-{}'.format(n_i),
     )
@@ -217,7 +217,7 @@ def generate(args):
     vdata = defaultdict(lambda: list())
 
     if args.plot_previous:
-      fnames = siamrl.envs.data.matching(
+      fnames = stackrl.envs.data.matching(
         'generated', 
         '*.csv'
       )
@@ -227,7 +227,7 @@ def generate(args):
     volume_ref = 1.
 
     for i in irregularity:
-      fname = siamrl.envs.data.path(
+      fname = stackrl.envs.data.path(
         'generated', 
         '{}.csv'.format(str(int(i*100)))
       )
@@ -276,8 +276,8 @@ def generate(args):
     y = np.array([v for v in values.values()])
     corrcoef = np.corrcoef(y)
     fig,ax = plt.subplots(constrained_layout=True)
-    im,_ = siamrl.heatmap.heatmap(corrcoef, values.keys(), values.keys(), ax=ax, cbarlabel='Correlation coefficient')
-    siamrl.heatmap.annotate_heatmap(im)
+    im,_ = stackrl.heatmap.heatmap(corrcoef, values.keys(), values.keys(), ax=ax, cbarlabel='Correlation coefficient')
+    stackrl.heatmap.annotate_heatmap(im)
     plt.savefig(os.path.join(plot_dir, 'corrcoef.pdf'))
     plt.savefig(os.path.join(plot_dir, 'corrcoef.png'))
     if args.show:
@@ -347,8 +347,8 @@ def range_type(arg):
   return list(np.arange(*arg))
 
 
-parser = argparse.ArgumentParser(description='siamrl main module.', prog='siamrl')
-parser.add_argument('--version', action='version', version='%(prog)s '+siamrl.__version__)
+parser = argparse.ArgumentParser(description='stackrl main module.', prog='stackrl')
+parser.add_argument('--version', action='version', version='%(prog)s '+stackrl.__version__)
 subparsers = parser.add_subparsers(title='commands')
 
 # parser for the train command
@@ -416,7 +416,7 @@ parser_test.set_defaults(func=test)
 
 # parser for the generate command
 parser_generate = subparsers.add_parser('generate',
-  description='generate irregular object models to populate siamrl/envs/data')
+  description='generate irregular object models to populate stackrl/envs/data')
 parser_generate.add_argument('-n', '--number', type=int, default=10000,
   help='number of models to generate')
 parser_generate.add_argument('-d','--directory',
