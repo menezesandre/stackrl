@@ -1,7 +1,6 @@
-# Siam-RL
+# stackrl
 
-Implementation of deep reinforcement learning agents using fully convolutional siamese neural networks.
-[Source][src]
+Implementation of a model-free reinforcement learning approach to dry stacking with irregular blocks. [Source][src]
 
-[src]: https://github.com/atmenezes96/Siam-RL
-
+[src]: https://github.com/menezesandre/stackrl
+[thesis]: https://fenix.tecnico.ulisboa.pt/cursos/meaer/dissertacao/1691203502344087
