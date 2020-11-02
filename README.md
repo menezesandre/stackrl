@@ -10,7 +10,7 @@ A model-free reinforcement learning approach to dry stacking with irregular bloc
 ## [Description](#contents)
 
 This package contains the implementation of:
-* an [environment][env] that simulates an abstraction of the task.
+* an [environment][envs] that simulates an abstraction of the task.
 * the [reinforcement learning algorithm][agents] used to learn the task.
 * the [neural network][nets] used to estimate the action values.
 
