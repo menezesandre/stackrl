@@ -1,6 +1,6 @@
 # stackrl
 
-A model-free reinforcement learning approach to dry stacking with irregular blocks. [Source][src]
+A model-free reinforcement learning approach to dry stacking with irregular rocks.
 
 ### Contents
 * [Description](#description)
@@ -11,8 +11,8 @@ A model-free reinforcement learning approach to dry stacking with irregular bloc
 
 This package contains the implementation of:
 * an [environment][envs] that simulates an abstraction of the task.
-* the [reinforcement learning algorithm][agents] used to learn the task.
 * the [neural network][nets] used to estimate the action values.
+* the [reinforcement learning algorithm][agents] used to learn.
 
 ## [Instalation](#contents)
 
